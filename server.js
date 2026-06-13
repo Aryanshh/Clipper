@@ -359,14 +359,15 @@ app.post('/api/cut', async (req, res) => {
 
     console.log(`Slicing video from ${start}s for ${duration}s to ${clipPath}`);
 
-    // Fast-seek (-ss before -i) and re-encode audio/video to ensure smooth playback
+    // Accurate-seek (-ss after -i) and re-encode audio/video to ensure smooth playback
     await runFFmpeg([
       '-y',
-      '-ss', start.toString(),
       '-i', videoPath,
+      '-ss', start.toString(),
       '-t', duration.toString(),
       '-c:v', 'libx264',
       '-c:a', 'aac',
+      '-avoid_negative_ts', 'make_zero',
       '-strict', '-2',
       clipPath
     ]);

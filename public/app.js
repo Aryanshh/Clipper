@@ -171,6 +171,7 @@ function setupEventListeners() {
       el.ratioBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.aspectRatio = btn.dataset.ratio;
+      updateAspectRatioPreview();
     });
   });
 
@@ -470,6 +471,7 @@ async function handleClipSelect(clip) {
     // Load sliced video clip
     el.clipPlayer.src = dataCut.clipUrl;
     el.clipPlayer.load();
+    updateAspectRatioPreview();
 
     // 2. Fetch word-level captions from Gemini
     el.transcriptTimeline.innerHTML = `
@@ -708,5 +710,16 @@ async function handleExport() {
   } finally {
     el.btnExportVideo.disabled = false;
     el.btnExportVideo.innerHTML = exportBtnOriginalText;
+  }
+}
+
+// Visual aspect ratio crop preview for editor player
+function updateAspectRatioPreview() {
+  const container = document.getElementById('clip-player-container');
+  if (!container) return;
+  if (state.aspectRatio === 'crop') {
+    container.classList.add('crop-9-16-active');
+  } else {
+    container.classList.remove('crop-9-16-active');
   }
 }
