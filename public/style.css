@@ -1027,3 +1027,74 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Subtitle Preview Overlay on Video Player */
+.subtitle-preview-overlay {
+  position: absolute;
+  left: 50%;
+  width: 85%;
+  pointer-events: none;
+  text-align: center;
+  z-index: 5;
+  line-height: 1.4;
+  word-spacing: 2px;
+  display: none;
+}
+
+/* Preset specific preview styling */
+.subtitle-preview-overlay.preset-tiktok {
+  top: 60%;
+  transform: translate(-50%, -50%);
+  font-family: 'Arial', sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+}
+.subtitle-preview-overlay.preset-tiktok .active-word {
+  color: #ffeb3b !important; /* Yellow */
+}
+
+.subtitle-preview-overlay.preset-cyberpunk {
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Outfit', 'Impact', sans-serif;
+  font-weight: 900;
+  font-size: 24px;
+  color: #06b6d4; /* Cyan */
+  text-shadow: 0 0 10px #ff00ff;
+  text-transform: uppercase;
+}
+.subtitle-preview-overlay.preset-cyberpunk .active-word {
+  color: #ff00ff !important; /* Hot pink */
+}
+
+.subtitle-preview-overlay.preset-minimalist {
+  bottom: 24px;
+  transform: translateX(-50%);
+  font-family: 'Arial', sans-serif;
+  font-weight: 500;
+  font-size: 15px;
+  color: #d1d5db;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+.subtitle-preview-overlay.preset-minimalist .active-word {
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+/* 9:16 layout specific styling overrides */
+.crop-9-16-active .subtitle-preview-overlay {
+  width: 90%;
+}
+.crop-9-16-active .subtitle-preview-overlay.preset-tiktok {
+  font-size: 16px;
+  top: 60%;
+}
+.crop-9-16-active .subtitle-preview-overlay.preset-cyberpunk {
+  font-size: 18px;
+}
+.crop-9-16-active .subtitle-preview-overlay.preset-minimalist {
+  font-size: 13px;
+  bottom: 30px;
+}

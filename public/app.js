@@ -8,7 +8,8 @@ const state = {
   captions: [],
   subtitlePreset: 'tiktok',
   aspectRatio: 'crop',
-  editingWordIndex: null
+  editingWordIndex: null,
+  editingSentenceIndex: null
 };
 
 // DOM Elements
@@ -67,7 +68,14 @@ const el = {
   formEditWord: document.getElementById('form-edit-word'),
   editWordText: document.getElementById('edit-word-text'),
   editWordStart: document.getElementById('edit-word-start'),
-  editWordEnd: document.getElementById('edit-word-end')
+  editWordEnd: document.getElementById('edit-word-end'),
+
+  // Sentence Edit Modal
+  sentenceEditModal: document.getElementById('sentence-edit-modal'),
+  btnCloseSentenceModal: document.getElementById('btn-close-sentence-modal'),
+  formEditSentence: document.getElementById('form-edit-sentence'),
+  editSentenceText: document.getElementById('edit-sentence-text'),
+  subtitlePreviewOverlay: document.getElementById('subtitle-preview-overlay')
 };
 
 // ----------------------------------------------------
@@ -162,6 +170,7 @@ function setupEventListeners() {
       el.stylePresetCards.forEach(c => c.classList.remove('active'));
       card.classList.add('active');
       state.subtitlePreset = card.dataset.style;
+      updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
     });
   });
 
@@ -181,6 +190,10 @@ function setupEventListeners() {
   // Word edit modal close
   el.btnCloseWordModal.addEventListener('click', () => closeModal(el.wordEditModal));
   el.formEditWord.addEventListener('submit', handleWordUpdate);
+
+  // Sentence edit modal close & submit
+  el.btnCloseSentenceModal.addEventListener('click', () => closeModal(el.sentenceEditModal));
+  el.formEditSentence.addEventListener('submit', handleSentenceUpdate);
 
   // Export execution
   el.btnExportVideo.addEventListener('click', handleExport);
@@ -558,10 +571,20 @@ function renderTranscriptTimeline(captions) {
     const startVal = sentence[0].start;
     const endVal = sentence[sentence.length - 1].end;
     sentenceMeta.innerHTML = `
-      <span class="sentence-number">Sentence ${sIdx + 1}</span>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="sentence-number">Sentence ${sIdx + 1}</span>
+        <button class="btn-edit-sentence-action" data-sentence-index="${sIdx}" style="background: none; border: none; color: var(--secondary-color); cursor: pointer; font-size: 11px; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-family: inherit; transition: background 0.2s;"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+      </div>
       <span class="sentence-time">${startVal.toFixed(1)}s - ${endVal.toFixed(1)}s</span>
     `;
     sentenceCard.appendChild(sentenceMeta);
+
+    // Attach sentence edit listener
+    const editBtn = sentenceMeta.querySelector('.btn-edit-sentence-action');
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSentenceEditModal(sIdx);
+    });
     
     const wordsContainer = document.createElement('div');
     wordsContainer.className = 'sentence-words';
@@ -631,6 +654,9 @@ function syncTimelineHighlight() {
       inline: 'center'
     });
   }
+
+  // Update real-time subtitle preview overlay
+  updateSubtitlePreviewOverlay(time);
 }
 
 // Word editing modal handlers
@@ -657,6 +683,7 @@ function handleWordUpdate(e) {
 
   closeModal(el.wordEditModal);
   renderTranscriptTimeline(state.captions);
+  updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
 }
 
 // ----------------------------------------------------
@@ -722,4 +749,92 @@ function updateAspectRatioPreview() {
   } else {
     container.classList.remove('crop-9-16-active');
   }
+}
+
+// Sentence editing modal handlers
+function openSentenceEditModal(sIdx) {
+  state.editingSentenceIndex = sIdx;
+  const sentences = groupCaptionsIntoSentences(state.captions);
+  const sentence = sentences[sIdx];
+  const fullText = sentence.map(w => w.word).join(' ');
+
+  el.editSentenceText.value = fullText;
+  openModal(el.sentenceEditModal);
+}
+
+function handleSentenceUpdate(e) {
+  e.preventDefault();
+  const sIdx = state.editingSentenceIndex;
+  if (sIdx === null) return;
+
+  const newText = el.editSentenceText.value.trim();
+  if (!newText) return;
+
+  const sentences = groupCaptionsIntoSentences(state.captions);
+  const oldSentence = sentences[sIdx];
+
+  const startVal = oldSentence[0].start;
+  const endVal = oldSentence[oldSentence.length - 1].end;
+  const duration = endVal - startVal;
+
+  const newWords = newText.split(/\s+/).filter(w => w.length > 0);
+  if (newWords.length === 0) return;
+
+  const wordDuration = duration / newWords.length;
+  const updatedSentenceWords = newWords.map((word, i) => {
+    return {
+      word: word,
+      start: startVal + i * wordDuration,
+      end: startVal + (i + 1) * wordDuration
+    };
+  });
+
+  const oldStartIdx = oldSentence[0].originalIndex;
+  const oldEndIdx = oldSentence[oldSentence.length - 1].originalIndex;
+
+  state.captions.splice(oldStartIdx, oldEndIdx - oldStartIdx + 1, ...updatedSentenceWords);
+
+  closeModal(el.sentenceEditModal);
+  renderTranscriptTimeline(state.captions);
+  updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
+}
+
+// Update real-time subtitle overlay preview on the video player
+function updateSubtitlePreviewOverlay(time) {
+  const overlay = el.subtitlePreviewOverlay;
+  if (!overlay) return;
+
+  overlay.className = 'subtitle-preview-overlay';
+  overlay.classList.add(`preset-${state.subtitlePreset}`);
+
+  if (state.captions.length === 0) {
+    overlay.style.display = 'none';
+    return;
+  }
+
+  const sentences = groupCaptionsIntoSentences(state.captions);
+
+  let activeSentence = null;
+  for (const sentence of sentences) {
+    const start = sentence[0].start;
+    const end = sentence[sentence.length - 1].end;
+    if (time >= start && time <= end) {
+      activeSentence = sentence;
+      break;
+    }
+  }
+
+  if (!activeSentence) {
+    overlay.style.display = 'none';
+    return;
+  }
+
+  overlay.style.display = 'block';
+  overlay.innerHTML = activeSentence.map(w => {
+    const isActive = time >= w.start && time <= w.end;
+    if (isActive) {
+      return `<span class="active-word">${w.word}</span>`;
+    }
+    return w.word;
+  }).join(' ');
 }

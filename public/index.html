@@ -146,8 +146,9 @@
         <div class="editor-left">
           <div class="player-card glass-panel">
             <h2 class="panel-title"><i class="fa-solid fa-clapperboard"></i> Sliced Clip Preview</h2>
-            <div class="video-container" id="clip-player-container">
+            <div class="video-container" id="clip-player-container" style="position: relative;">
               <video id="clip-player" controls preload="metadata"></video>
+              <div id="subtitle-preview-overlay" class="subtitle-preview-overlay"></div>
             </div>
           </div>
 
@@ -279,6 +280,25 @@
             </div>
           </div>
           <button type="submit" class="btn-primary btn-block">Update Word</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sentence Edit Modal -->
+  <div id="sentence-edit-modal" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-keyboard"></i> Edit Sentence Subtitle</h2>
+        <button id="btn-close-sentence-modal" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-edit-sentence">
+          <div class="form-row">
+            <label for="edit-sentence-text">Subtitle Phrase</label>
+            <textarea id="edit-sentence-text" rows="4" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); border-radius:var(--border-radius-sm); color:#fff; padding:12px; font-family:inherit; font-size:14px; resize:vertical;" required></textarea>
+          </div>
+          <button type="submit" class="btn-primary btn-block">Update Subtitle</button>
         </form>
       </div>
     </div>
