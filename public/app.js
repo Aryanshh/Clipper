@@ -7,7 +7,7 @@ const state = {
   selectedClip: null,
   captions: [],
   subtitlePreset: 'tiktok',
-  aspectRatio: 'original',
+  aspectRatio: 'crop',
   editingWordIndex: null
 };
 

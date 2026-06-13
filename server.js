@@ -270,9 +270,9 @@ app.post('/api/analyze', async (req, res) => {
       throw new Error(`File processing failed. State: ${fileState.state}`);
     }
 
-    console.log('File is active. Generating clip analysis...');
     const prompt = `Analyze the audio of this video to identify the most engaging, viral, or interesting segments suitable for short-form social media clips (TikTok, Shorts, Reels). 
-Identify 3 to 5 high-quality clips. For each clip, provide:
+Identify 3 to 5 high-quality clips. For each clip, the duration (end - start) MUST range between 30 and 90 seconds (i.e., at least 30 seconds and at most 90 seconds long). If the original video is shorter than 30 seconds, identify clips spanning the maximum possible duration.
+For each clip, provide:
 1. A catchy hook-focused title.
 2. Precise start and end times in seconds (as floats or integers).
 3. A virality score from 0 to 100.
