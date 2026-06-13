@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clipper AI - Automated Social Media Video Clipper & Captioner</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="logo">
+        <i class="fa-solid fa-scissors logo-icon"></i>
+        <span>CLIPPER<span class="logo-accent">AI</span></span>
+      </div>
+      <div class="nav-actions">
+        <button id="btn-open-settings" class="btn-icon" title="API Settings">
+          <i class="fa-solid fa-cog"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    
+    <!-- Step 1: Import Screen -->
+    <section id="section-import" class="section-container active">
+      <div class="welcome-header">
+        <h1>Create Viral Clips in Seconds</h1>
+        <p>Upload a video or paste a YouTube link. Our AI will automatically find the best segments, rate their virality, and generate word-level animated subtitles.</p>
+      </div>
+
+      <div class="import-card glass-panel">
+        <div class="tab-headers">
+          <button class="tab-btn active" data-tab="tab-youtube">
+            <i class="fa-brands fa-youtube tab-icon"></i> YouTube Link
+          </button>
+          <button class="tab-btn" data-tab="tab-upload">
+            <i class="fa-solid fa-upload tab-icon"></i> Upload Local File
+          </button>
+        </div>
+
+        <div class="tab-content active" id="tab-youtube">
+          <form id="form-import-yt" class="import-form">
+            <div class="input-group">
+              <i class="fa-solid fa-link input-icon"></i>
+              <input type="url" id="yt-url" placeholder="https://www.youtube.com/watch?v=..." required>
+            </div>
+            <button type="submit" class="btn-primary">
+              <i class="fa-solid fa-circle-down"></i> Import & Process
+            </button>
+          </form>
+        </div>
+
+        <div class="tab-content" id="tab-upload">
+          <div id="drop-zone" class="drop-zone">
+            <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+            <h3>Drag & Drop Video File</h3>
+            <p>Support MP4, MOV, AVI up to 100MB</p>
+            <span class="or-divider">or</span>
+            <label for="local-file" class="btn-secondary">Browse File</label>
+            <input type="file" id="local-file" accept="video/*" style="display: none;">
+            <div id="selected-file-name" class="selected-file"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Processing & Dashboard Workspace -->
+    <section id="section-workspace" class="section-container">
+      
+      <!-- Stepper / Status Bar -->
+      <div class="status-stepper glass-panel">
+        <div class="step-item active" id="step-import">
+          <div class="step-circle"><i class="fa-solid fa-file-import"></i></div>
+          <span>Importing Video</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" id="step-analyze">
+          <div class="step-circle"><i class="fa-solid fa-brain"></i></div>
+          <span>AI Clip Analysis</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" id="step-refine">
+          <div class="step-circle"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+          <span>Refine & Caption</span>
+        </div>
+      </div>
+
+      <div class="workspace-grid">
+        
+        <!-- Left Panel: Original Video Player / Status -->
+        <div class="workspace-left">
+          <div class="player-card glass-panel">
+            <h2 class="panel-title"><i class="fa-solid fa-video"></i> Source Video</h2>
+            <div class="video-container">
+              <video id="source-player" controls preload="metadata"></video>
+            </div>
+            <div id="processing-details" class="processing-details">
+              <div class="spinner-container">
+                <div class="cyber-spinner"></div>
+              </div>
+              <p id="processing-status-text">Uploading video file...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Panel: AI Extracted Clips / Results -->
+        <div class="workspace-right">
+          <div class="clips-card glass-panel">
+            <h2 class="panel-title"><i class="fa-solid fa-chart-line"></i> AI Viral Clips</h2>
+            <div id="clips-list" class="clips-list">
+              <!-- Dynamically populated clip items -->
+              <div class="clips-placeholder">
+                <i class="fa-solid fa-robot"></i>
+                <p>Waiting for video analysis to complete...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Step 3: Caption Editor & Export Screen -->
+    <section id="section-editor" class="section-container">
+      <div class="editor-header">
+        <button id="btn-back-to-clips" class="btn-back">
+          <i class="fa-solid fa-arrow-left"></i> Back to Clips
+        </button>
+        <h1>Customize & Export Clip</h1>
+      </div>
+
+      <div class="editor-grid">
+        <!-- Editor Left: Sliced Clip Player -->
+        <div class="editor-left">
+          <div class="player-card glass-panel">
+            <h2 class="panel-title"><i class="fa-solid fa-clapperboard"></i> Sliced Clip Preview</h2>
+            <div class="video-container">
+              <video id="clip-player" controls preload="metadata"></video>
+            </div>
+          </div>
+
+          <div class="styles-card glass-panel">
+            <h2 class="panel-title"><i class="fa-solid fa-palette"></i> Caption Style & Layout</h2>
+            
+            <div class="style-group">
+              <label class="group-label">Subtitle Preset</label>
+              <div class="style-presets">
+                <div class="style-preset-card active" data-style="tiktok">
+                  <div class="preset-preview tiktok-preset">TikTok</div>
+                  <span>TikTok Yellow</span>
+                </div>
+                <div class="style-preset-card" data-style="cyberpunk">
+                  <div class="preset-preview cyberpunk-preset">Cyber</div>
+                  <span>Cyberpunk Neon</span>
+                </div>
+                <div class="style-preset-card" data-style="minimalist">
+                  <div class="preset-preview minimalist-preset">Minimal</div>
+                  <span>Minimalist White</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="style-group">
+              <label class="group-label">Output Aspect Ratio</label>
+              <div class="ratio-selectors">
+                <button class="ratio-btn active" data-ratio="original">
+                  <i class="fa-solid fa-expand"></i> Original Size
+                </button>
+                <button class="ratio-btn" data-ratio="crop">
+                  <i class="fa-solid fa-mobile-screen-button"></i> Crop to 9:16 Portrait
+                </button>
+              </div>
+            </div>
+
+            <button id="btn-export-video" class="btn-primary btn-block">
+              <i class="fa-solid fa-video-slash"></i> Burn Captions & Export
+            </button>
+          </div>
+        </div>
+
+        <!-- Editor Right: Word-level Timeline -->
+        <div class="editor-right">
+          <div class="transcript-card glass-panel">
+            <h2 class="panel-title"><i class="fa-solid fa-keyboard"></i> Word-Level Subtitle Editor</h2>
+            <p class="transcript-help">Click a word to seek the player to its start time. Double-click a word to edit its spelling or adjust its timings.</p>
+            
+            <div id="transcript-timeline" class="transcript-timeline">
+              <!-- Dynamically populated words -->
+              <div class="transcript-placeholder">
+                <div class="caption-loader">
+                  <div class="cyber-spinner"></div>
+                </div>
+                <p>Generating word-level subtitles...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4: Export Result screen -->
+    <section id="section-export-result" class="section-container">
+      <div class="export-header">
+        <h1>Your Clip is Ready!</h1>
+        <p>Download the video or go back to make adjustments.</p>
+      </div>
+
+      <div class="export-workspace glass-panel">
+        <div class="export-preview-container">
+          <video id="export-player" controls preload="metadata"></video>
+        </div>
+        <div class="export-actions">
+          <a id="btn-download-export" href="#" download class="btn-primary">
+            <i class="fa-solid fa-download"></i> Download Video
+          </a>
+          <button id="btn-back-to-editor" class="btn-secondary">
+            <i class="fa-solid fa-sliders"></i> Edit Subtitles Again
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings Modal Overlay -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-key"></i> Settings</h2>
+        <button id="btn-close-settings" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Enter your Google Gemini API Key to enable clip detection, viral scoring, and transcription features.</p>
+        <form id="form-settings">
+          <div class="input-group">
+            <i class="fa-solid fa-lock input-icon"></i>
+            <input type="password" id="gemini-key-input" placeholder="Enter Gemini API Key (AIzaSy...)" required>
+          </div>
+          <div id="key-status" class="key-status">Checking API key...</div>
+          <button type="submit" class="btn-primary btn-block">Save Settings</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Word Edit Modal -->
+  <div id="word-edit-modal" class="modal-overlay">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-pen"></i> Edit Word Timing & Text</h2>
+        <button id="btn-close-word-modal" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-edit-word">
+          <div class="form-row">
+            <label for="edit-word-text">Word Text</label>
+            <input type="text" id="edit-word-text" required>
+          </div>
+          <div class="form-row split-row">
+            <div>
+              <label for="edit-word-start">Start Time (sec)</label>
+              <input type="number" id="edit-word-start" step="0.01" min="0" required>
+            </div>
+            <div>
+              <label for="edit-word-end">End Time (sec)</label>
+              <input type="number" id="edit-word-end" step="0.01" min="0" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary btn-block">Update Word</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom script -->
+  <script src="/public/app.js"></script>
+</body>
+</html>
