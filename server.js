@@ -179,7 +179,8 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
       await new Promise((resolve, reject) => {
         // Run yt-dlp to download best mp4
         const args = [
-          '--ffmpeg-location', ffmpegStatic,
+          '--ffmpeg-location', ffmpegBinary,
+          '--no-check-certificate',
           '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
           '--merge-output-format', 'mp4',
           '-o', videoPath,
