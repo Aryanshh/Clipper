@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
 const ffmpegStatic = require('ffmpeg-static');
+const ffmpegBinary = process.platform === 'win32' ? ffmpegStatic : 'ffmpeg';
 const { GoogleGenAI } = require('@google/genai');
 
 // Load environment variables
@@ -62,15 +63,15 @@ function getGeminiClient() {
 // Helper: Run FFmpeg Command
 function runFFmpeg(args, cwd = __dirname) {
   return new Promise((resolve, reject) => {
-    console.log(`Running FFmpeg: ${ffmpegStatic} ${args.join(' ')}`);
+    console.log(`Running FFmpeg: ${ffmpegBinary} ${args.join(' ')}`);
     
-    // Inject Fontconfig config file to resolve Windows fonts rendering
-    const env = {
-      ...process.env,
-      FONTCONFIG_FILE: path.join(__dirname, 'fonts.conf')
-    };
+    // Inject Fontconfig config file to resolve Windows fonts rendering only on Windows
+    const env = { ...process.env };
+    if (process.platform === 'win32') {
+      env.FONTCONFIG_FILE = path.join(__dirname, 'fonts.conf');
+    }
 
-    const proc = spawn(ffmpegStatic, args, { cwd, env });
+    const proc = spawn(ffmpegBinary, args, { cwd, env });
     
     let stderr = '';
     proc.stderr.on('data', (data) => {
