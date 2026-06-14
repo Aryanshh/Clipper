@@ -270,13 +270,17 @@ app.post('/api/analyze', async (req, res) => {
       throw new Error(`File processing failed. State: ${fileState.state}`);
     }
 
-    const prompt = `Analyze the audio of this video to identify the most engaging, viral, or interesting segments suitable for short-form social media clips (TikTok, Shorts, Reels). 
-Identify 3 to 5 high-quality clips. For each clip, the duration (end - start) MUST range between 30 and 90 seconds (i.e., at least 30 seconds and at most 90 seconds long). If the original video is shorter than 30 seconds, identify clips spanning the maximum possible duration.
-For each clip, provide:
-1. A catchy hook-focused title.
-2. Precise start and end times in seconds (as floats or integers).
-3. A virality score from 0 to 100.
-4. A brief explanation of why this segment is viral (e.g. funny, high tension, insightful).
+    const prompt = `Analyze the audio of this video to identify the most engaging, viral, or interesting segments optimized specifically for YouTube Shorts, Instagram Reels, and TikTok.
+Focus heavily on YT Shorts virality:
+1. Identify segments that start with a powerful, high-impact hook in the first 1-3 seconds.
+2. For each clip, the duration (end - start) MUST range between 30 and 90 seconds (i.e., at least 30 seconds and at most 90 seconds long). If the original video is shorter than 30 seconds, identify clips spanning the maximum possible duration.
+3. For each clip, provide:
+   - A catchy hook-focused Title.
+   - Precise start and end times in seconds (as floats or integers).
+   - A virality score from 0 to 100 based on hook strength, emotional engagement, and pacing.
+   - A brief explanation of why this segment is viral (e.g., strong hook, clear takeaway, dramatic peak).
+   - An optimized Description for YT Shorts including a hook line.
+   - A list of 3 to 5 trending Hashtags (e.g., #shorts, etc.).
 
 Return the response strictly in JSON format matching the schema.`;
 
@@ -304,9 +308,14 @@ Return the response strictly in JSON format matching the schema.`;
                   start: { type: 'NUMBER' },
                   end: { type: 'NUMBER' },
                   score: { type: 'INTEGER' },
-                  reason: { type: 'STRING' }
+                  reason: { type: 'STRING' },
+                  description: { type: 'STRING' },
+                  hashtags: {
+                    type: 'ARRAY',
+                    items: { type: 'STRING' }
+                  }
                 },
-                required: ['title', 'start', 'end', 'score', 'reason']
+                required: ['title', 'start', 'end', 'score', 'reason', 'description', 'hashtags']
               }
             }
           },
@@ -514,9 +523,10 @@ app.post('/api/export', async (req, res) => {
       alignment = 5; // Centered
     }
 
-    // Group captions into sentences based on punctuation and pauses
+    // Group captions into short high-impact phrases for virality
     const phrases = [];
     let currentPhrase = [];
+    const maxPhraseLength = (style === 'minimalist') ? 8 : 3;
     
     for (let i = 0; i < captions.length; i++) {
       const cap = captions[i];
@@ -527,15 +537,13 @@ app.post('/api/export', async (req, res) => {
       const hasClauseEnding = /[,;:-]/.test(wordText);
       
       const nextCap = captions[i + 1];
-      const hasPause = nextCap ? (nextCap.start - cap.end > 0.8) : false;
-      const isTooLong = currentPhrase.length >= 10; // Avoid excessively long lines
+      const hasPause = nextCap ? (nextCap.start - cap.end > 0.6) : false;
+      const isTooLong = currentPhrase.length >= maxPhraseLength;
       
-      // End phrase if sentence punctuation, long pause, or max length reached
       if (hasSentenceEnding || hasPause || isTooLong || !nextCap) {
         phrases.push(currentPhrase);
         currentPhrase = [];
-      } else if (hasClauseEnding && currentPhrase.length >= 5) {
-        // Break at commas/clauses only if the current phrase is already moderately long
+      } else if (hasClauseEnding && currentPhrase.length >= 2) {
         phrases.push(currentPhrase);
         currentPhrase = [];
       }

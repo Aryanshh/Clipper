@@ -170,6 +170,7 @@ function setupEventListeners() {
       el.stylePresetCards.forEach(c => c.classList.remove('active'));
       card.classList.add('active');
       state.subtitlePreset = card.dataset.style;
+      renderTranscriptTimeline(state.captions);
       updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
     });
   });
@@ -528,6 +529,7 @@ async function handleClipSelect(clip) {
 function groupCaptionsIntoSentences(captions) {
   const sentences = [];
   let currentSentence = [];
+  const maxPhraseLength = (state.subtitlePreset === 'minimalist') ? 8 : 3;
   
   for (let i = 0; i < captions.length; i++) {
     const cap = captions[i];
@@ -535,11 +537,15 @@ function groupCaptionsIntoSentences(captions) {
     
     const wordText = cap.word.trim();
     const hasSentenceEnding = /[.!?]/.test(wordText);
+    const hasClauseEnding = /[,;:-]/.test(wordText);
     const nextCap = captions[i + 1];
-    const hasPause = nextCap ? (nextCap.start - cap.end > 0.8) : false;
-    const isTooLong = currentSentence.length >= 10;
+    const hasPause = nextCap ? (nextCap.start - cap.end > 0.6) : false;
+    const isTooLong = currentSentence.length >= maxPhraseLength;
     
     if (hasSentenceEnding || hasPause || isTooLong || !nextCap) {
+      sentences.push(currentSentence);
+      currentSentence = [];
+    } else if (hasClauseEnding && currentSentence.length >= 2) {
       sentences.push(currentSentence);
       currentSentence = [];
     }
@@ -732,6 +738,11 @@ async function handleExport() {
 
     el.btnDownloadExport.href = data.exportUrl;
 
+    // Populate virality optimizer fields
+    document.getElementById('virality-title').value = state.selectedClip.title || '';
+    document.getElementById('virality-description').value = state.selectedClip.description || '';
+    document.getElementById('virality-hashtags').value = (state.selectedClip.hashtags || []).join(' ');
+
   } catch (err) {
     alert(`Export failed: ${err.message}`);
   } finally {
@@ -838,3 +849,29 @@ function updateSubtitlePreviewOverlay(time) {
     return w.word;
   }).join(' ');
 }
+
+// Copy to clipboard helper for virality metadata
+window.copyField = function(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.select();
+  el.setSelectionRange(0, 99999); // Mobile compatibility
+  navigator.clipboard.writeText(el.value).then(() => {
+    const btn = el.nextElementSibling;
+    if (btn) {
+      const icon = btn.querySelector('i');
+      if (icon) {
+        icon.className = 'fa-solid fa-check';
+        btn.style.borderColor = '#10b981';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+          icon.className = 'fa-regular fa-copy';
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 1500);
+      }
+    }
+  }).catch(err => {
+    console.error('Failed to copy text:', err);
+  });
+};

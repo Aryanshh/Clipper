@@ -854,10 +854,93 @@ body {
 .export-header p {
   color: var(--text-secondary);
 }
-.export-workspace {
-  max-width: 500px;
+.export-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 32px;
+  max-width: 1000px;
   margin: 0 auto;
+  padding: 0 16px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .export-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+.export-workspace {
+  width: 100%;
   padding: 24px;
+  margin: 0;
+}
+.virality-card {
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.panel-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: -8px;
+  margin-bottom: 8px;
+}
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.metadata-item label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.copy-input-group {
+  display: flex;
+  gap: 10px;
+}
+.copy-input-group input, .copy-input-group textarea {
+  flex: 1;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--border-radius-sm);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+.copy-input-group input:focus, .copy-input-group textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+.copy-input-group textarea {
+  resize: none;
+}
+.btn-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all var(--transition-fast);
+}
+.btn-copy:hover {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 0 12px var(--primary-glow);
 }
 .export-preview-container {
   width: 100%;

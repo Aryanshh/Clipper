@@ -218,17 +218,56 @@
         <p>Download the video or go back to make adjustments.</p>
       </div>
 
-      <div class="export-workspace glass-panel">
-        <div class="export-preview-container">
-          <video id="export-player" controls preload="metadata"></video>
+      <div class="export-layout">
+        <!-- Left: Player and download -->
+        <div class="export-workspace glass-panel">
+          <div class="export-preview-container">
+            <video id="export-player" controls preload="metadata"></video>
+          </div>
+          <div class="export-actions">
+            <a id="btn-download-export" href="#" download class="btn-primary">
+              <i class="fa-solid fa-download"></i> Download Video
+            </a>
+            <button id="btn-back-to-editor" class="btn-secondary">
+              <i class="fa-solid fa-sliders"></i> Edit Subtitles Again
+            </button>
+          </div>
         </div>
-        <div class="export-actions">
-          <a id="btn-download-export" href="#" download class="btn-primary">
-            <i class="fa-solid fa-download"></i> Download Video
-          </a>
-          <button id="btn-back-to-editor" class="btn-secondary">
-            <i class="fa-solid fa-sliders"></i> Edit Subtitles Again
-          </button>
+
+        <!-- Right: YT Shorts Virality Optimizer Card -->
+        <div class="virality-card glass-panel">
+          <h2 class="panel-title"><i class="fa-solid fa-fire"></i> YT Shorts Virality Optimizer</h2>
+          <p class="panel-description">Copy/paste these AI-optimized details directly to YouTube to boost search rankings and viewer CTR.</p>
+          
+          <div class="metadata-item">
+            <label>Shorts Hook Title</label>
+            <div class="copy-input-group">
+              <input type="text" id="virality-title" readonly>
+              <button class="btn-copy" onclick="copyField('virality-title')" title="Copy to clipboard">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="metadata-item">
+            <label>Shorts Description</label>
+            <div class="copy-input-group">
+              <textarea id="virality-description" readonly rows="4"></textarea>
+              <button class="btn-copy" onclick="copyField('virality-description')" title="Copy to clipboard">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="metadata-item">
+            <label>Recommended Tags / Hashtags</label>
+            <div class="copy-input-group">
+              <input type="text" id="virality-hashtags" readonly>
+              <button class="btn-copy" onclick="copyField('virality-hashtags')" title="Copy to clipboard">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
