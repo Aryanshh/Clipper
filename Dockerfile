@@ -18,22 +18,21 @@ RUN apt-get update && apt-get install -y \
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
 
-# Set up non-root user for Hugging Face Spaces / secure cloud hosting
-RUN useradd -m -u 1000 user
-WORKDIR /home/user/app
+# Set up non-root directory using the image's pre-configured node user (UID 1000)
+WORKDIR /home/node/app
 
-# Copy package files and install dependencies as non-root user
-COPY --chown=user package*.json ./
+# Copy package files and install dependencies as node user
+COPY --chown=node:node package*.json ./
 RUN npm ci --only=production
 
 # Copy the rest of the application files
-COPY --chown=user . .
+COPY --chown=node:node . .
 
-# Create necessary directories and ensure they are owned by the non-root user
-RUN mkdir -p downloads clips exports && chown -R user:user /home/user/app
+# Create necessary directories and ensure they are owned by the node user
+RUN mkdir -p downloads clips exports && chown -R node:node /home/node/app
 
-# Switch to non-root user
-USER user
+# Switch to node user
+USER node
 
 # Set environment variables
 ENV PORT=3000
