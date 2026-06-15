@@ -418,7 +418,7 @@ async function runGeminiAnalysis() {
     state.clips = data.clips;
 
     if (el.autopilotCheckbox && el.autopilotCheckbox.checked) {
-      runAutopilotBatch(data.clips);
+      renderAutopilotConfigBoard(data.clips);
     } else {
       renderClips(data.clips);
       setStepState('step-analyze', 'complete');
@@ -1065,7 +1065,8 @@ window.copyHistoryText = function(text, btnEl, label) {
 };
 
 // Autopilot batch processing queue
-async function runAutopilotBatch(clips) {
+// Autopilot batch configuration board (pre-processing settings selection)
+function renderAutopilotConfigBoard(clips) {
   // Select top 3 viral segments based on score
   const topClips = [...clips]
     .sort((a, b) => b.score - a.score)
@@ -1083,6 +1084,99 @@ async function runAutopilotBatch(clips) {
 
   // Update stepper state
   setStepState('step-analyze', 'complete');
+  setStepState('step-refine', 'inactive');
+
+  // Render configuration board layout
+  el.clipsList.innerHTML = `
+    <div class="autopilot-config-container" style="padding: 10px;">
+      <div class="autopilot-header">
+        <h3><i class="fa-solid fa-sliders"></i> Configure Batch Processing</h3>
+        <p>Customize fonts, styles, and layouts for each shortlisted clip before starting the automated batch render.</p>
+      </div>
+      <div class="autopilot-config-list" style="display: flex; flex-direction: column; gap: 16px;">
+        ${topClips.map((clip, idx) => `
+          <div class="autopilot-config-card" id="config-card-${idx}" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); padding: 16px; display: flex; flex-direction: column; gap: 12px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+              <div style="flex: 1;">
+                <h4 style="margin: 0; font-size: 14.5px; color: #fff; font-weight: 600;">${clip.title}</h4>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-secondary);">Score: <strong style="color: var(--secondary-color);">${clip.score}/100</strong> | Duration: ${clip.start.toFixed(1)}s - ${clip.end.toFixed(1)}s</p>
+              </div>
+              <label class="checkbox-container" style="display: inline-flex; align-items: center; position: relative; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="config-include-${idx}" checked style="margin-right: 6px; cursor: pointer;">
+                <span style="font-size: 12px; color: var(--text-muted);">Include</span>
+              </label>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px;">
+              <div>
+                <label style="display:block; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Font</label>
+                <select id="config-font-${idx}" style="width: 100%; padding: 8px; font-size: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); color: #fff; outline: none;">
+                  <option value="the_bold_font" selected>The Bold Font</option>
+                  <option value="montserrat_black">Montserrat Black</option>
+                  <option value="bangers">Bangers</option>
+                  <option value="fredoka_one">Fredoka One</option>
+                  <option value="impact">Impact</option>
+                  <option value="arial">Arial</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Style</label>
+                <select id="config-style-${idx}" style="width: 100%; padding: 8px; font-size: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); color: #fff; outline: none;">
+                  <option value="tiktok" selected>TikTok Yellow</option>
+                  <option value="cyberpunk">Cyberpunk Neon</option>
+                  <option value="minimalist">Minimalist White</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Layout</label>
+                <select id="config-layout-${idx}" style="width: 100%; padding: 8px; font-size: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); color: #fff; outline: none;">
+                  <option value="fit_blur" selected>Fit & Blur (9:16)</option>
+                  <option value="crop">Center Crop (9:16)</option>
+                  <option value="original">Original Ratio</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <button id="btn-start-autopilot" class="btn-primary" style="width: 100%; justify-content: center; padding: 14px; margin-top: 24px; font-weight: 600; font-size: 14px;">
+        <i class="fa-solid fa-play"></i> Start Batch Processing
+      </button>
+    </div>
+  `;
+
+  // Bind start button event
+  const btnStart = document.getElementById('btn-start-autopilot');
+  if (btnStart) {
+    btnStart.addEventListener('click', () => {
+      // Gather config data for active clips
+      const queuedClips = [];
+      topClips.forEach((clip, idx) => {
+        const includeCheckbox = document.getElementById(`config-include-${idx}`);
+        if (includeCheckbox && includeCheckbox.checked) {
+          queuedClips.push({
+            ...clip,
+            font: document.getElementById(`config-font-${idx}`).value,
+            style: document.getElementById(`config-style-${idx}`).value,
+            cropMode: document.getElementById(`config-layout-${idx}`).value
+          });
+        }
+      });
+
+      if (queuedClips.length === 0) {
+        alert('Please select at least one clip to process.');
+        return;
+      }
+
+      // Start the batch execution with chosen settings
+      startAutopilotExecution(queuedClips);
+    });
+  }
+}
+
+// Autopilot batch processing queue
+async function startAutopilotExecution(queuedClips) {
+  // Update stepper state
   setStepState('step-refine', 'active');
 
   // Render progress board layout
@@ -1090,10 +1184,10 @@ async function runAutopilotBatch(clips) {
     <div class="autopilot-progress-container">
       <div class="autopilot-header">
         <h3><i class="fa-solid fa-robot"></i> Autopilot Batch Exporter</h3>
-        <p>AI is processing the top ${topClips.length} viral clips. Rendering with Fit & Blur 9:16 layout in the background.</p>
+        <p>AI is processing the selected ${queuedClips.length} clips in the background.</p>
       </div>
       <div class="autopilot-queue" id="autopilot-queue">
-        ${topClips.map((clip, idx) => `
+        ${queuedClips.map((clip, idx) => `
           <div class="autopilot-item" id="autopilot-item-${idx}">
             <div class="autopilot-item-header">
               <h4 class="autopilot-item-title">${clip.title}</h4>
@@ -1116,8 +1210,8 @@ async function runAutopilotBatch(clips) {
   `;
 
   // Sequentially process each clip to avoid server resource starvation
-  for (let idx = 0; idx < topClips.length; idx++) {
-    const clip = topClips[idx];
+  for (let idx = 0; idx < queuedClips.length; idx++) {
+    const clip = queuedClips[idx];
     const itemCard = document.getElementById(`autopilot-item-${idx}`);
     const statusLabel = document.getElementById(`autopilot-status-${idx}`);
     const badgeCut = document.getElementById(`step-cut-${idx}`);
@@ -1159,7 +1253,7 @@ async function runAutopilotBatch(clips) {
       badgeTranscribe.classList.remove('active');
       badgeTranscribe.classList.add('done');
 
-      // Step 3: Render Fit & Blur 9:16 layout with viral captions
+      // Step 3: Render layout with viral captions and custom user styles
       badgeRender.classList.add('active');
       statusLabel.textContent = 'Rendering layout...';
       const exportRes = await fetch('/api/export', {
@@ -1168,9 +1262,9 @@ async function runAutopilotBatch(clips) {
         body: JSON.stringify({
           clipFilename: cutData.clipFilename,
           captions: captionsData.captions,
-          style: 'tiktok',
-          cropMode: 'fit_blur',
-          font: 'the_bold_font',
+          style: clip.style,
+          cropMode: clip.cropMode,
+          font: clip.font,
           title: clip.title,
           description: clip.description,
           hashtags: clip.hashtags
