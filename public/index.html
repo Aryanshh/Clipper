@@ -316,11 +316,24 @@
       <div class="modal-body">
         <p class="modal-description">Enter your Google Gemini API Key to enable clip detection, viral scoring, and transcription features.</p>
         <form id="form-settings">
-          <div class="input-group">
-            <i class="fa-solid fa-lock input-icon"></i>
-            <input type="password" id="gemini-key-input" placeholder="Enter Gemini API Key (AIzaSy...)" required>
+          <div class="form-row" style="margin-bottom: 15px;">
+            <label for="gemini-key-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Gemini API Key</label>
+            <div class="input-group">
+              <i class="fa-solid fa-lock input-icon"></i>
+              <input type="password" id="gemini-key-input" placeholder="Enter Gemini API Key (AIzaSy...)" required>
+            </div>
+            <div id="key-status" class="key-status">Checking API key...</div>
           </div>
-          <div id="key-status" class="key-status">Checking API key...</div>
+          
+          <div class="form-row" style="margin-bottom: 20px;">
+            <label for="youtube-cookies-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: flex; justify-content: space-between;">
+              <span>YouTube Cookies (Netscape format)</span>
+              <a href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies" target="_blank" style="color: var(--secondary-color); text-decoration: none;">Help</a>
+            </label>
+            <textarea id="youtube-cookies-input" rows="5" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#10;..." style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); color: #fff; font-family: monospace; font-size: 11px; resize: vertical; outline: none;"></textarea>
+            <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Paste cookies to download restricted YouTube videos on cloud servers.</span>
+          </div>
+
           <button type="submit" class="btn-primary btn-block">Save Settings</button>
         </form>
       </div>

@@ -156,15 +156,27 @@ async function generateContentWithFallback(ai, options) {
 // ----------------------------------------------------
 app.get('/api/settings', (req, res) => {
   const key = process.env.GEMINI_API_KEY;
+  const cookiesPath = path.join(__dirname, 'cookies.txt');
+  const hasCookies = fs.existsSync(cookiesPath);
+  
+  let cookiesContent = '';
+  if (hasCookies) {
+    try {
+      cookiesContent = fs.readFileSync(cookiesPath, 'utf-8');
+    } catch (err) {
+      console.error('Error reading cookies.txt:', err);
+    }
+  }
+
   if (!key) {
-    return res.json({ configured: false });
+    return res.json({ configured: false, cookiesConfigured: hasCookies, cookiesContent });
   }
   const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '****';
-  res.json({ configured: true, keyMasked: masked });
+  res.json({ configured: true, keyMasked: masked, cookiesConfigured: hasCookies, cookiesContent });
 });
 
 app.post('/api/settings', (req, res) => {
-  const { apiKey } = req.body;
+  const { apiKey, youtubeCookies } = req.body;
   if (!apiKey || apiKey.trim() === '') {
     return res.status(400).json({ error: 'API key is required.' });
   }
@@ -175,7 +187,27 @@ app.post('/api/settings', (req, res) => {
   const envPath = path.join(__dirname, '.env');
   fs.writeFileSync(envPath, `GEMINI_API_KEY=${apiKey.trim()}\n`);
 
-  res.json({ success: true, message: 'Gemini API key saved successfully.' });
+  // Save or delete cookies.txt
+  const cookiesPath = path.join(__dirname, 'cookies.txt');
+  if (youtubeCookies && youtubeCookies.trim() !== '') {
+    try {
+      fs.writeFileSync(cookiesPath, youtubeCookies, 'utf-8');
+      console.log('Saved YouTube cookies to cookies.txt');
+    } catch (err) {
+      console.error('Error saving cookies.txt:', err);
+    }
+  } else {
+    if (fs.existsSync(cookiesPath)) {
+      try {
+        fs.unlinkSync(cookiesPath);
+        console.log('Deleted cookies.txt');
+      } catch (err) {
+        console.error('Error deleting cookies.txt:', err);
+      }
+    }
+  }
+
+  res.json({ success: true, message: 'Settings saved successfully.' });
 });
 
 // ----------------------------------------------------
@@ -206,6 +238,11 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
           '-o', videoPath,
           url
         ];
+
+        const localCookiesPath = path.join(__dirname, 'cookies.txt');
+        if (fs.existsSync(localCookiesPath)) {
+          args.unshift('--cookies', localCookiesPath);
+        }
 
         if (process.platform === 'win32') {
           args.unshift('--ffmpeg-location', ffmpegBinary);

@@ -26,6 +26,7 @@ const el = {
   settingsModal: document.getElementById('settings-modal'),
   formSettings: document.getElementById('form-settings'),
   geminiKeyInput: document.getElementById('gemini-key-input'),
+  youtubeCookiesInput: document.getElementById('youtube-cookies-input'),
   keyStatus: document.getElementById('key-status'),
 
   // Import screen elements
@@ -109,6 +110,12 @@ async function checkSettings() {
       el.keyStatus.textContent = 'API Key not configured.';
       el.keyStatus.style.color = '#ef4444';
       openModal(el.settingsModal);
+    }
+    
+    if (data.cookiesContent) {
+      el.youtubeCookiesInput.value = data.cookiesContent;
+    } else {
+      el.youtubeCookiesInput.value = '';
     }
   } catch (err) {
     console.error('Error checking settings:', err);
@@ -256,14 +263,15 @@ function showSection(sectionEl) {
 async function handleSettingsSave(e) {
   e.preventDefault();
   const apiKey = el.geminiKeyInput.value.trim();
+  const youtubeCookies = el.youtubeCookiesInput.value.trim();
   if (!apiKey) return;
 
   try {
-    el.keyStatus.textContent = 'Saving key...';
+    el.keyStatus.textContent = 'Saving settings...';
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey })
+      body: JSON.stringify({ apiKey, youtubeCookies })
     });
     const data = await res.json();
     if (data.success) {
@@ -271,7 +279,7 @@ async function handleSettingsSave(e) {
       closeModal(el.settingsModal);
       checkSettings();
     } else {
-      el.keyStatus.textContent = 'Error saving key.';
+      el.keyStatus.textContent = 'Error saving settings.';
       el.keyStatus.style.color = '#ef4444';
     }
   } catch (err) {
