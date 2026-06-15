@@ -75,7 +75,17 @@ const el = {
   btnCloseSentenceModal: document.getElementById('btn-close-sentence-modal'),
   formEditSentence: document.getElementById('form-edit-sentence'),
   editSentenceText: document.getElementById('edit-sentence-text'),
-  subtitlePreviewOverlay: document.getElementById('subtitle-preview-overlay')
+  subtitlePreviewOverlay: document.getElementById('subtitle-preview-overlay'),
+  subtitleFontSelect: document.getElementById('subtitle-font-select'),
+
+  // History Modal
+  btnOpenHistory: document.getElementById('btn-open-history'),
+  btnCloseHistory: document.getElementById('btn-close-history'),
+  historyModal: document.getElementById('history-modal'),
+  historyList: document.getElementById('history-list'),
+
+  // Autopilot
+  autopilotCheckbox: document.getElementById('autopilot-checkbox')
 };
 
 // ----------------------------------------------------
@@ -195,6 +205,26 @@ function setupEventListeners() {
   // Sentence edit modal close & submit
   el.btnCloseSentenceModal.addEventListener('click', () => closeModal(el.sentenceEditModal));
   el.formEditSentence.addEventListener('submit', handleSentenceUpdate);
+
+  // Subtitle font selection change listener
+  if (el.subtitleFontSelect) {
+    el.subtitleFontSelect.addEventListener('change', () => {
+      updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
+    });
+  }
+
+  // History Modal triggers
+  if (el.btnOpenHistory) {
+    el.btnOpenHistory.addEventListener('click', () => {
+      loadHistory();
+      openModal(el.historyModal);
+    });
+  }
+  if (el.btnCloseHistory) {
+    el.btnCloseHistory.addEventListener('click', () => {
+      closeModal(el.historyModal);
+    });
+  }
 
   // Export execution
   el.btnExportVideo.addEventListener('click', handleExport);
@@ -386,9 +416,13 @@ async function runGeminiAnalysis() {
 
     const data = await res.json();
     state.clips = data.clips;
-    renderClips(data.clips);
 
-    setStepState('step-analyze', 'complete');
+    if (el.autopilotCheckbox && el.autopilotCheckbox.checked) {
+      runAutopilotBatch(data.clips);
+    } else {
+      renderClips(data.clips);
+      setStepState('step-analyze', 'complete');
+    }
   } catch (err) {
     el.clipsList.innerHTML = `
       <div class="clips-placeholder" style="color:var(--accent-color);">
@@ -706,6 +740,7 @@ async function handleExport() {
   el.btnExportVideo.innerHTML = `<div class="cyber-spinner" style="width:18px; height:18px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:8px;"></div> Exporting & Rendering...`;
 
   try {
+    const fontSelect = el.subtitleFontSelect;
     const res = await fetch('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -713,7 +748,9 @@ async function handleExport() {
         clipFilename: state.selectedClip.clipFilename,
         captions: state.captions,
         style: state.subtitlePreset,
-        crop: state.aspectRatio === 'crop'
+        crop: state.aspectRatio === 'crop',
+        cropMode: state.aspectRatio,
+        font: fontSelect ? fontSelect.value : 'arial'
       })
     });
 
@@ -727,7 +764,7 @@ async function handleExport() {
     // Load exported video in Result Screen
     showSection(el.secExportResult);
     
-    if (state.aspectRatio === 'crop') {
+    if (state.aspectRatio === 'crop' || state.aspectRatio === 'fit_blur') {
       el.exportPreviewContainer.classList.remove('original-ratio');
     } else {
       el.exportPreviewContainer.classList.add('original-ratio');
@@ -755,7 +792,7 @@ async function handleExport() {
 function updateAspectRatioPreview() {
   const container = document.getElementById('clip-player-container');
   if (!container) return;
-  if (state.aspectRatio === 'crop') {
+  if (state.aspectRatio === 'crop' || state.aspectRatio === 'fit_blur') {
     container.classList.add('crop-9-16-active');
   } else {
     container.classList.remove('crop-9-16-active');
@@ -818,6 +855,26 @@ function updateSubtitlePreviewOverlay(time) {
   overlay.className = 'subtitle-preview-overlay';
   overlay.classList.add(`preset-${state.subtitlePreset}`);
 
+  // Apply selected custom font to preview overlay
+  const fontSelect = el.subtitleFontSelect;
+  const selectedFontValue = fontSelect ? fontSelect.value : 'arial';
+  const fontMapping = {
+    'the_bold_font': "'The Bold Font', Impact, sans-serif",
+    'montserrat_black': "'Montserrat', sans-serif",
+    'bangers': "'Bangers', sans-serif",
+    'fredoka_one': "'Fredoka', sans-serif",
+    'impact': "Impact, sans-serif",
+    'arial': "Arial, sans-serif"
+  };
+  overlay.style.fontFamily = fontMapping[selectedFontValue] || 'Arial, sans-serif';
+  if (selectedFontValue === 'montserrat_black') {
+    overlay.style.fontWeight = '900';
+  } else if (selectedFontValue === 'fredoka_one') {
+    overlay.style.fontWeight = '600';
+  } else {
+    overlay.style.fontWeight = '';
+  }
+
   if (state.captions.length === 0) {
     overlay.style.display = 'none';
     return;
@@ -875,3 +932,283 @@ window.copyField = function(id) {
     console.error('Failed to copy text:', err);
   });
 };
+
+// Load and render exported clips history
+async function loadHistory() {
+  const container = el.historyList;
+  if (!container) return;
+
+  try {
+    container.innerHTML = `
+      <div style="text-align:center; padding:30px; color:var(--text-secondary);">
+        <div class="cyber-spinner" style="width:24px; height:24px; display:inline-block; border-width:2px; vertical-align:middle; margin-right:8px;"></div>
+        <span>Loading history...</span>
+      </div>
+    `;
+
+    const res = await fetch('/api/history');
+    if (!res.ok) throw new Error('Failed to fetch history.');
+
+    const data = await res.json();
+    const items = data.exports || [];
+
+    if (items.length === 0) {
+      container.innerHTML = `
+        <div class="history-empty" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+          <i class="fa-solid fa-folder-open" style="font-size: 48px; margin-bottom: 15px; color: rgba(255,255,255,0.1);"></i>
+          <p>No exports found yet. Start clipping to build your history!</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = items.map((item) => {
+      const dateStr = new Date(item.timestamp).toLocaleString();
+      const tagsStr = (item.hashtags || []).join(' ');
+      const cleanDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      const cleanTitle = (item.title || 'Untitled Clip').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+      return `
+        <div class="history-card-item">
+          <!-- Video Preview -->
+          <div class="history-video-col">
+            <div class="history-video-wrapper">
+              <video src="${item.exportUrl}" preload="metadata" muted loop onmouseover="this.play()" onmouseout="this.pause(); this.currentTime=0;"></video>
+            </div>
+          </div>
+
+          <!-- Metadata & Details -->
+          <div class="history-details-col">
+            <div class="history-item-header">
+              <h3 class="history-item-title" title="${cleanTitle}">${item.title || 'Untitled Clip'}</h3>
+              <span class="history-item-time">${dateStr}</span>
+            </div>
+
+            <div class="history-item-badges">
+              <span class="history-badge badge-preset">${item.style} style</span>
+              <span class="history-badge badge-preset">${item.font || 'arial'} font</span>
+              <span class="history-badge badge-crop">${item.cropMode === 'crop' ? '9:16 Crop' : (item.cropMode === 'fit_blur' ? '9:16 Fit & Blur' : (item.crop ? '9:16 Crop' : 'Original Ratio'))}</span>
+            </div>
+
+            <p class="history-item-desc">${item.description || 'No description generated.'}</p>
+            <div class="history-item-tags">${tagsStr}</div>
+          </div>
+
+          <!-- Actions -->
+          <div class="history-actions-col">
+            <a href="${item.exportUrl}" download class="btn-copy" style="text-decoration:none; justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px;">
+              <i class="fa-solid fa-download"></i> Download Video
+            </a>
+            
+            <button class="btn-copy" onclick="copyHistoryText('${cleanTitle}', this, 'Title')">
+              <i class="fa-regular fa-copy"></i> Copy Title
+            </button>
+            
+            <button class="btn-copy" onclick="copyHistoryText('${tagsStr.replace(/'/g, "\\'")}', this, 'Hashtags')">
+              <i class="fa-regular fa-copy"></i> Copy Hashtags
+            </button>
+            
+            <button class="btn-copy history-btn-danger" onclick="deleteHistoryItem('${item.id}')">
+              <i class="fa-solid fa-trash-can"></i> Delete Clip
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  } catch (err) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:20px; color:var(--accent-color);">
+        <i class="fa-solid fa-circle-exclamation" style="font-size:24px;"></i>
+        <p style="margin-top:10px;">Failed to load history: ${err.message}</p>
+      </div>
+    `;
+  }
+}
+
+// Delete export history item
+async function deleteHistoryItem(id) {
+  if (!confirm('Are you sure you want to delete this clip? This will permanently delete the file from the server.')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/history/${id}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('Failed to delete history item.');
+
+    // Reload history list
+    loadHistory();
+  } catch (err) {
+    alert(`Error deleting clip: ${err.message}`);
+  }
+}
+
+// Copy to clipboard helper for history items
+window.copyHistoryText = function(text, btnEl, label) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalHTML = btnEl.innerHTML;
+    
+    btnEl.style.borderColor = '#10b981';
+    btnEl.style.color = '#10b981';
+    btnEl.innerHTML = `<i class="fa-solid fa-check"></i> Copied ${label}`;
+    
+    setTimeout(() => {
+      btnEl.style.borderColor = '';
+      btnEl.style.color = '';
+      btnEl.innerHTML = originalHTML;
+    }, 1500);
+  }).catch(err => {
+    console.error('Failed to copy text:', err);
+  });
+};
+
+// Autopilot batch processing queue
+async function runAutopilotBatch(clips) {
+  // Select top 3 viral segments based on score
+  const topClips = [...clips]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  if (topClips.length === 0) {
+    el.clipsList.innerHTML = `
+      <div class="clips-placeholder">
+        <i class="fa-solid fa-face-frown"></i>
+        <p>No viral clips identified by Gemini.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Update stepper state
+  setStepState('step-analyze', 'complete');
+  setStepState('step-refine', 'active');
+
+  // Render progress board layout
+  el.clipsList.innerHTML = `
+    <div class="autopilot-progress-container">
+      <div class="autopilot-header">
+        <h3><i class="fa-solid fa-robot"></i> Autopilot Batch Exporter</h3>
+        <p>AI is processing the top ${topClips.length} viral clips. Rendering with Fit & Blur 9:16 layout in the background.</p>
+      </div>
+      <div class="autopilot-queue" id="autopilot-queue">
+        ${topClips.map((clip, idx) => `
+          <div class="autopilot-item" id="autopilot-item-${idx}">
+            <div class="autopilot-item-header">
+              <h4 class="autopilot-item-title">${clip.title}</h4>
+              <span class="autopilot-item-status" id="autopilot-status-${idx}">Pending...</span>
+            </div>
+            <div class="autopilot-steps-grid">
+              <div class="autopilot-step-badge" id="step-cut-${idx}">1. Slice</div>
+              <div class="autopilot-step-badge" id="step-transcribe-${idx}">2. Transcribe</div>
+              <div class="autopilot-step-badge" id="step-render-${idx}">3. Render</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div id="autopilot-summary" style="margin-top: 24px; text-align: center; display: none;">
+        <button id="btn-autopilot-history" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+          <i class="fa-solid fa-clock-rotate-left"></i> View Export History
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Sequentially process each clip to avoid server resource starvation
+  for (let idx = 0; idx < topClips.length; idx++) {
+    const clip = topClips[idx];
+    const itemCard = document.getElementById(`autopilot-item-${idx}`);
+    const statusLabel = document.getElementById(`autopilot-status-${idx}`);
+    const badgeCut = document.getElementById(`step-cut-${idx}`);
+    const badgeTranscribe = document.getElementById(`step-transcribe-${idx}`);
+    const badgeRender = document.getElementById(`step-render-${idx}`);
+
+    statusLabel.textContent = 'Processing...';
+
+    try {
+      // Step 1: Slice Video clip from source
+      badgeCut.classList.add('active');
+      statusLabel.textContent = 'Slicing segment...';
+      const cutRes = await fetch('/api/cut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: state.videoId,
+          start: clip.start,
+          end: clip.end
+        })
+      });
+      if (!cutRes.ok) throw new Error('Slicing failed.');
+      const cutData = await cutRes.json();
+      badgeCut.classList.remove('active');
+      badgeCut.classList.add('done');
+
+      // Step 2: Transcribe sliced clip
+      badgeTranscribe.classList.add('active');
+      statusLabel.textContent = 'Transcribing audio...';
+      const captionsRes = await fetch('/api/captions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clipAudioFilename: cutData.clipAudioFilename
+        })
+      });
+      if (!captionsRes.ok) throw new Error('Transcription failed.');
+      const captionsData = await captionsRes.json();
+      badgeTranscribe.classList.remove('active');
+      badgeTranscribe.classList.add('done');
+
+      // Step 3: Render Fit & Blur 9:16 layout with viral captions
+      badgeRender.classList.add('active');
+      statusLabel.textContent = 'Rendering layout...';
+      const exportRes = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clipFilename: cutData.clipFilename,
+          captions: captionsData.captions,
+          style: 'tiktok',
+          cropMode: 'fit_blur',
+          font: 'the_bold_font',
+          title: clip.title,
+          description: clip.description,
+          hashtags: clip.hashtags
+        })
+      });
+      if (!exportRes.ok) throw new Error('Render failed.');
+      badgeRender.classList.remove('active');
+      badgeRender.classList.add('done');
+
+      // Success
+      statusLabel.textContent = 'Completed!';
+      itemCard.classList.add('status-done');
+
+    } catch (err) {
+      console.error(`Autopilot error processing clip ${idx}:`, err);
+      statusLabel.textContent = 'Failed';
+      itemCard.classList.add('status-error');
+      
+      // Update badges to visually show error
+      if (badgeCut.classList.contains('active')) badgeCut.style.borderColor = '#ef4444';
+      if (badgeTranscribe.classList.contains('active')) badgeTranscribe.style.borderColor = '#ef4444';
+      if (badgeRender.classList.contains('active')) badgeRender.style.borderColor = '#ef4444';
+    }
+  }
+
+  // Stepper completed state
+  setStepState('step-refine', 'complete');
+
+  // Render view history navigation link
+  const summaryDiv = document.getElementById('autopilot-summary');
+  if (summaryDiv) {
+    summaryDiv.style.display = 'block';
+    const btnHist = document.getElementById('btn-autopilot-history');
+    if (btnHist) {
+      btnHist.addEventListener('click', () => {
+        loadHistory();
+        openModal(el.historyModal);
+      });
+    }
+  }
+}

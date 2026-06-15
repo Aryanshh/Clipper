@@ -20,7 +20,7 @@ app.use(cors());
 app.use(express.json());
 
 // Create required directories
-const dirs = ['downloads', 'clips', 'exports', 'public'];
+const dirs = ['downloads', 'clips', 'exports', 'public', 'fonts'];
 dirs.forEach(dir => {
   const dirPath = path.join(__dirname, dir);
   if (!fs.existsSync(dirPath)) {
@@ -45,6 +45,7 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 app.use('/clips', express.static(path.join(__dirname, 'clips')));
 app.use('/exports', express.static(path.join(__dirname, 'exports')));
+app.use('/fonts', express.static(path.join(__dirname, 'fonts')));
 
 // Fallback to index.html for root route
 app.get('/', (req, res) => {
@@ -65,11 +66,26 @@ function runFFmpeg(args, cwd = __dirname) {
   return new Promise((resolve, reject) => {
     console.log(`Running FFmpeg: ${ffmpegBinary} ${args.join(' ')}`);
     
-    // Inject Fontconfig config file to resolve Windows fonts rendering only on Windows
-    const env = { ...process.env };
-    if (process.platform === 'win32') {
-      env.FONTCONFIG_FILE = path.join(__dirname, 'fonts.conf');
+    // Generate a dynamic fonts.conf with absolute paths to ensure font loading
+    const dynamicFontsConf = `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+    <dir>${path.join(__dirname, 'fonts')}</dir>
+    ${process.platform === 'win32' ? '<dir>C:\\Windows\\Fonts</dir>' : '<dir>/usr/share/fonts</dir><dir>/usr/local/share/fonts</dir>'}
+    <cachedir>${path.join(__dirname, 'fontcache')}</cachedir>
+</fontconfig>`;
+    
+    const fontsConfPath = path.join(__dirname, 'temp_fonts.conf');
+    try {
+      fs.writeFileSync(fontsConfPath, dynamicFontsConf, 'utf-8');
+    } catch (err) {
+      console.error('Failed to write temp_fonts.conf:', err);
     }
+
+    const env = {
+      ...process.env,
+      FONTCONFIG_FILE: fontsConfPath
+    };
 
     const proc = spawn(ffmpegBinary, args, { cwd, env });
     
@@ -79,6 +95,11 @@ function runFFmpeg(args, cwd = __dirname) {
     });
 
     proc.on('close', (code) => {
+      // Clean up temp fonts.conf
+      fs.unlink(fontsConfPath, (err) => {
+        if (err) console.error('Error deleting temp_fonts.conf:', err);
+      });
+
       if (code === 0) {
         resolve();
       } else {
@@ -477,7 +498,7 @@ app.post('/api/captions', async (req, res) => {
 // ----------------------------------------------------
 app.post('/api/export', async (req, res) => {
   try {
-    const { clipFilename, captions, style, crop } = req.body;
+    const { clipFilename, captions, style, crop, cropMode, font, title, description, hashtags } = req.body;
     if (!clipFilename || !captions || !Array.isArray(captions)) {
       return res.status(400).json({ error: 'clipFilename and captions array are required.' });
     }
@@ -523,6 +544,19 @@ app.post('/api/export', async (req, res) => {
       outlineColor = '00000000';
       outline = 3;
       alignment = 5; // Centered
+    }
+
+    // Override font if specified
+    const fontMapping = {
+      'the_bold_font': 'The Bold Font',
+      'montserrat_black': 'Montserrat Black',
+      'bangers': 'Bangers',
+      'fredoka_one': 'Fredoka One',
+      'impact': 'Impact',
+      'arial': 'Arial'
+    };
+    if (font && fontMapping[font]) {
+      fontName = fontMapping[font];
     }
 
     // Group captions into short high-impact phrases for virality
@@ -610,12 +644,15 @@ ${dialogueEvents.join('\n')}
     const exportFilename = `export_${Date.now()}.mp4`;
     const exportPath = path.join(__dirname, 'exports', exportFilename);
 
+    const activeCropMode = cropMode || (crop ? 'crop' : 'original');
     let filterComplex = '';
-    if (crop) {
+    
+    if (activeCropMode === 'crop') {
       // Crop to 9:16 aspect ratio (center crop), then apply subtitles.
-      // Under Windows FFmpeg subtitles filter, we want to specify relative path or escaped absolute path.
-      // Setting Cwd of runFFmpeg to 'clips' directory allows using the filename directly!
       filterComplex = `crop=ih*9/16:ih,subtitles=${assFilename}`;
+    } else if (activeCropMode === 'fit_blur') {
+      // Fit video inside a 9:16 canvas, applying a blurred background behind it.
+      filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=ih*9/16:ih:force_original_aspect_ratio=increase,crop=ih*9/16:ih,boxblur=20:5[bg];[fg_src]scale=ih*9/16:-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
     } else {
       filterComplex = `subtitles=${assFilename}`;
     }
@@ -640,6 +677,24 @@ ${dialogueEvents.join('\n')}
       if (err) console.error('Error deleting temp ASS file:', err);
     });
 
+    // Save to database history
+    const exportItem = {
+      id: `exp_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      clipFilename,
+      exportFilename,
+      exportUrl: `/exports/${exportFilename}`,
+      style,
+      font,
+      crop: activeCropMode !== 'original',
+      cropMode: activeCropMode,
+      title: title || 'Untitled Clip',
+      description: description || '',
+      hashtags: hashtags || [],
+      captions
+    };
+    saveExportToHistory(exportItem);
+
     res.json({
       success: true,
       exportUrl: `/exports/${exportFilename}`,
@@ -652,10 +707,144 @@ ${dialogueEvents.join('\n')}
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`=================================================`);
-  console.log(`  Clipper Server is running on port ${PORT}`);
-  console.log(`  Access the app at http://localhost:${PORT}`);
-  console.log(`=================================================`);
+const DB_PATH = path.join(__dirname, 'db.json');
+
+function readDb() {
+  if (!fs.existsSync(DB_PATH)) {
+    return { exports: [] };
+  }
+  try {
+    const data = fs.readFileSync(DB_PATH, 'utf-8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('Error reading db.json, returning empty structure:', err);
+    return { exports: [] };
+  }
+}
+
+function writeDb(data) {
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error writing to db.json:', err);
+  }
+}
+
+function saveExportToHistory(exportItem) {
+  try {
+    const db = readDb();
+    db.exports.unshift(exportItem);
+    writeDb(db);
+  } catch (err) {
+    console.error('Error saving export item:', err);
+  }
+}
+
+// ----------------------------------------------------
+// 7. History Endpoints
+// ----------------------------------------------------
+app.get('/api/history', (req, res) => {
+  try {
+    const db = readDb();
+    res.json({ success: true, exports: db.exports });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/history/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = readDb();
+    const index = db.exports.findIndex(item => item.id === id);
+    
+    if (index === -1) {
+      return res.status(404).json({ error: 'History item not found.' });
+    }
+
+    const item = db.exports[index];
+    
+    // Delete video file
+    const filePath = path.join(__dirname, 'exports', item.exportFilename);
+    if (fs.existsSync(filePath)) {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error(`Failed to delete video file ${filePath}:`, err);
+      });
+    }
+
+    db.exports.splice(index, 1);
+    writeDb(db);
+
+    res.json({ success: true, message: 'History item deleted.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const https = require('https');
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, (response) => {
+      // Handle redirects (important for GitHub raw files)
+      if (response.statusCode === 301 || response.statusCode === 302) {
+        resolve(downloadFile(response.headers.location, dest));
+        return;
+      }
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download ${url}: Status ${response.statusCode}`));
+        return;
+      }
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        resolve();
+      });
+    }).on('error', (err) => {
+      fs.unlink(dest, () => {});
+      reject(err);
+    });
+  });
+}
+
+async function ensureFonts() {
+  const fontsDir = path.join(__dirname, 'fonts');
+  const fontUrls = {
+    'TheBoldFont.ttf': 'https://raw.githubusercontent.com/LonamiWebs/8-Bally-Pool/master/src/Resources/Original/font/theboldfont.ttf',
+    'Montserrat-Black.ttf': 'https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Black.ttf',
+    'Bangers-Regular.ttf': 'https://raw.githubusercontent.com/google/fonts/main/ofl/bangers/Bangers-Regular.ttf',
+    'FredokaOne-Regular.ttf': 'https://raw.githubusercontent.com/pimoroni/fonts-python/master/font-fredoka-one/font_fredoka_one/files/FredokaOne-Regular.ttf'
+  };
+
+  for (const [filename, url] of Object.entries(fontUrls)) {
+    const dest = path.join(fontsDir, filename);
+    if (!fs.existsSync(dest)) {
+      console.log(`Downloading font ${filename} for viral subtitles...`);
+      try {
+        await downloadFile(url, dest);
+        console.log(`Successfully downloaded ${filename}`);
+      } catch (err) {
+        console.error(`Failed to download font ${filename}:`, err);
+      }
+    }
+  }
+}
+
+// Ensure fonts are downloaded, then start the server
+ensureFonts().then(() => {
+  app.listen(PORT, () => {
+    console.log(`=================================================`);
+    console.log(`  Clipper Server is running on port ${PORT}`);
+    console.log(`  Access the app at http://localhost:${PORT}`);
+    console.log(`=================================================`);
+  });
+}).catch(err => {
+  console.error('Failed to initialize fonts on startup:', err);
+  app.listen(PORT, () => {
+    console.log(`=================================================`);
+    console.log(`  Clipper Server is running on port ${PORT}`);
+    console.log(`  Access the app at http://localhost:${PORT}`);
+    console.log(`=================================================`);
+  });
 });

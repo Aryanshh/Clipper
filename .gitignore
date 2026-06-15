@@ -4,3 +4,6 @@ clips/
 downloads/
 exports/
 *.log
+db.json
+fonts/
+temp_fonts.conf
