@@ -200,13 +200,16 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
       await new Promise((resolve, reject) => {
         // Run yt-dlp to download best mp4
         const args = [
-          '--ffmpeg-location', ffmpegBinary,
           '--no-check-certificate',
           '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
           '--merge-output-format', 'mp4',
           '-o', videoPath,
           url
         ];
+
+        if (process.platform === 'win32') {
+          args.unshift('--ffmpeg-location', ffmpegBinary);
+        }
 
         console.log(`Running yt-dlp ${args.join(' ')}`);
         const proc = spawn('yt-dlp', args);

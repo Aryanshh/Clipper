@@ -1,0 +1,14 @@
+node_modules
+downloads
+clips
+exports
+db.json
+fonts
+temp_fonts.conf
+.env
+.git
+.gitignore
+Dockerfile
+render.yaml
+walkthrough.md
+*.log

@@ -3,6 +3,7 @@ services:
     name: viral-ai-clipper
     env: docker
     plan: free
+    port: 3000
     envVars:
       - key: GEMINI_API_KEY
         sync: false
