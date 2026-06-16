@@ -1004,7 +1004,7 @@ async function loadHistory() {
 
           <!-- Actions -->
           <div class="history-actions-col">
-            <a href="${item.exportUrl}" download class="btn-copy" style="text-decoration:none; justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px;">
+            <a href="/api/download/${item.exportFilename}" download="${item.exportFilename}" class="btn-copy" style="text-decoration:none; justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px;">
               <i class="fa-solid fa-download"></i> Download Video
             </a>
             

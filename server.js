@@ -571,7 +571,11 @@ app.post('/api/cut', async (req, res) => {
       '-ss', start.toString(),
       '-t', duration.toString(),
       '-c:v', 'libx264',
+      '-crf', '18',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
       '-c:a', 'aac',
+      '-b:a', '192k',
       '-avoid_negative_ts', 'make_zero',
       '-strict', '-2',
       clipPath
@@ -840,7 +844,13 @@ ${dialogueEvents.join('\n')}
       '-i', clipFilename,
       '-vf', filterComplex,
       '-c:v', 'libx264',
+      '-crf', '18',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      '-profile:v', 'high',
+      '-level:v', '4.1',
       '-c:a', 'aac',
+      '-b:a', '192k',
       '-strict', '-2',
       `../exports/${exportFilename}`
     ], path.join(__dirname, 'clips'));
@@ -912,6 +922,23 @@ function saveExportToHistory(exportItem) {
     console.error('Error saving export item:', err);
   }
 }
+
+// ----------------------------------------------------
+// 6.5. Download Endpoint
+// ----------------------------------------------------
+app.get('/api/download/:filename', (req, res) => {
+  const { filename } = req.params;
+  
+  // Security check: ensure path traversal is prevented
+  const safeFilename = path.basename(filename);
+  const filePath = path.join(__dirname, 'exports', safeFilename);
+  
+  if (fs.existsSync(filePath)) {
+    res.download(filePath, safeFilename);
+  } else {
+    res.status(404).json({ error: 'Video file not found.' });
+  }
+});
 
 // ----------------------------------------------------
 // 7. History Endpoints
