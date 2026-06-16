@@ -926,6 +926,11 @@ app.get('/api/download/:filename', (req, res) => {
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }
+  
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.setHeader('Content-Type', 'video/mp4');
+
   res.download(filePath, filename, (err) => {
     if (err) {
       console.error('Download error:', err);

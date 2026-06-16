@@ -781,7 +781,8 @@ async function handleExport() {
     el.exportPlayer.src = data.exportUrl;
     el.exportPlayer.load();
 
-    el.btnDownloadExport.href = data.exportUrl;
+    el.btnDownloadExport.href = `/api/download/${data.exportFilename}`;
+    el.btnDownloadExport.setAttribute('download', data.exportFilename);
 
     // Populate virality optimizer fields
     document.getElementById('virality-title').value = state.selectedClip.title || '';
