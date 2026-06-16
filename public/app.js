@@ -781,8 +781,11 @@ async function handleExport() {
     el.exportPlayer.src = data.exportUrl;
     el.exportPlayer.load();
 
-    el.btnDownloadExport.href = `/api/download/${data.exportFilename}`;
-    el.btnDownloadExport.setAttribute('download', data.exportFilename);
+    el.btnDownloadExport.href = '#';
+    el.btnDownloadExport.onclick = (e) => {
+      e.preventDefault();
+      downloadVideo(`/api/download/${data.exportFilename}`, data.exportFilename, el.btnDownloadExport);
+    };
 
     // Populate virality optimizer fields
     document.getElementById('virality-title').value = state.selectedClip.title || '';
@@ -982,7 +985,7 @@ async function loadHistory() {
           <!-- Video Preview -->
           <div class="history-video-col">
             <div class="history-video-wrapper">
-              <video src="${item.exportUrl}" preload="metadata" muted loop onmouseover="this.play()" onmouseout="this.pause(); this.currentTime=0;"></video>
+              <video src="${item.exportUrl}" preload="metadata" controls style="object-fit: contain; width: 100%; height: 100%;"></video>
             </div>
           </div>
 
@@ -1005,9 +1008,9 @@ async function loadHistory() {
 
           <!-- Actions -->
           <div class="history-actions-col">
-            <a href="/api/download/${item.exportFilename}" download="${item.exportFilename}" class="btn-copy" style="text-decoration:none; justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px;">
+            <button onclick="downloadVideo('/api/download/${item.exportFilename}', '${item.exportFilename}', this)" class="btn-copy" style="justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px; cursor:pointer;">
               <i class="fa-solid fa-download"></i> Download Video
-            </a>
+            </button>
             
             <button class="btn-copy" onclick="copyHistoryText('${cleanTitle}', this, 'Title')">
               <i class="fa-regular fa-copy"></i> Copy Title
@@ -1315,3 +1318,39 @@ async function startAutopilotExecution(queuedClips) {
     }
   }
 }
+
+// Force file download using JS Blob fetch to bypass iframe and cross-origin naming blocks
+window.downloadVideo = async function(url, filename, btn) {
+  if (!btn) return;
+  const originalHtml = btn.innerHTML;
+  btn.style.pointerEvents = 'none';
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Downloading...`;
+  
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.error('Fetch download failed, falling back to direct navigation:', err);
+    // Fallback: trigger normal download navigation
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    btn.style.pointerEvents = '';
+    btn.innerHTML = originalHtml;
+  }
+};
