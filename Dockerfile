@@ -14,12 +14,17 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp globally and ensure it is executable
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
-    && chmod a+rx /usr/local/bin/yt-dlp
-
 # Set up non-root directory using the image's pre-configured node user (UID 1000)
 WORKDIR /home/node/app
+
+# Download yt-dlp to user's home/bin folder where it is writable and can be auto-updated
+RUN mkdir -p /home/node/bin && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /home/node/bin/yt-dlp && \
+    chmod a+rx /home/node/bin/yt-dlp && \
+    chown -R node:node /home/node/bin
+
+# Add the user's bin folder to the environment PATH
+ENV PATH="/home/node/bin:${PATH}"
 
 # Copy package files and install dependencies as node user
 COPY --chown=node:node package*.json ./

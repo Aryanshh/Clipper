@@ -39,6 +39,17 @@ if (process.env.YOUTUBE_COOKIES) {
   }
 }
 
+// Automatically update yt-dlp to the latest version on startup
+const { exec } = require('child_process');
+console.log('Checking for yt-dlp updates...');
+exec('yt-dlp -U', (err, stdout, stderr) => {
+  if (err) {
+    console.error('Failed to update yt-dlp:', err.message);
+  } else {
+    console.log('yt-dlp update check:', stdout.trim() || stderr.trim() || 'Already up to date');
+  }
+});
+
 // Configure Multer for local file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -248,7 +259,7 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
           '--merge-output-format', 'mp4',
           '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           '--referer', 'https://www.youtube.com/',
-          '--extractor-args', 'youtube:player_client=android,web',
+          '--extractor-args', 'youtube:player_client=default,-android_sdkless',
           '-o', videoPath,
           url
         ];
