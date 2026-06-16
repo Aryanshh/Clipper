@@ -8,5 +8,8 @@ services:
       - key: GEMINI_API_KEY
         sync: false
         placeholder: "Enter your Gemini API Key"
+      - key: YOUTUBE_COOKIES
+        sync: false
+        placeholder: "Optional: Paste Netscape cookies.txt content here"
       - key: NODE_ENV
         value: production

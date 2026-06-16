@@ -28,6 +28,17 @@ dirs.forEach(dir => {
   }
 });
 
+// Write cookies.txt from environment variable if configured (for Render/HuggingFace persistence)
+if (process.env.YOUTUBE_COOKIES) {
+  const cookiesPath = path.join(__dirname, 'cookies.txt');
+  try {
+    fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES, 'utf-8');
+    console.log('Successfully initialized cookies.txt from environment variable.');
+  } catch (err) {
+    console.error('Failed to initialize cookies.txt from environment variable:', err);
+  }
+}
+
 // Configure Multer for local file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -233,8 +244,11 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
         // Run yt-dlp to download best mp4
         const args = [
           '--no-check-certificate',
-          '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+          '-f', 'bestvideo+bestaudio/best',
           '--merge-output-format', 'mp4',
+          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          '--referer', 'https://www.youtube.com/',
+          '--extractor-args', 'youtube:player_client=android,web',
           '-o', videoPath,
           url
         ];
