@@ -1210,6 +1210,7 @@ async function startAutopilotExecution(queuedClips) {
               <div class="autopilot-step-badge" id="step-transcribe-${idx}">2. Transcribe</div>
               <div class="autopilot-step-badge" id="step-render-${idx}">3. Render</div>
             </div>
+            <div class="autopilot-item-result" id="autopilot-result-${idx}" style="margin-top: 15px; display: none;"></div>
           </div>
         `).join('')}
       </div>
@@ -1283,12 +1284,38 @@ async function startAutopilotExecution(queuedClips) {
         })
       });
       if (!exportRes.ok) throw new Error('Render failed.');
+      const exportData = await exportRes.json();
       badgeRender.classList.remove('active');
       badgeRender.classList.add('done');
 
       // Success
       statusLabel.textContent = 'Completed!';
       itemCard.classList.add('status-done');
+
+      // Populate results inline
+      const resultDiv = document.getElementById(`autopilot-result-${idx}`);
+      if (resultDiv) {
+        const cleanTitle = (clip.title || 'Untitled Clip').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const cleanDesc = (clip.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const tagsStr = (clip.hashtags || []).join(' ');
+
+        resultDiv.innerHTML = `
+          <div style="display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-top: 10px;">
+            <div style="width: 70px; aspect-ratio: 9/16; background: #000; border-radius: 4px; overflow: hidden; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1);">
+              <video src="${exportData.exportUrl}" muted style="width: 100%; height: 100%; object-fit: cover;" onmouseover="this.play()" onmouseout="this.pause(); this.currentTime=0;"></video>
+            </div>
+            <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px;">
+              <button onclick="previewAutopilotExport('${exportData.exportUrl}', '${exportData.exportFilename}', '${cleanTitle}', '${cleanDesc}', '${tagsStr}', '${clip.cropMode}')" class="btn-copy" style="justify-content:center; background:var(--secondary-color); color:#fff; border:none; text-align:center; padding:8px; cursor:pointer; font-weight:600; border-radius:4px;">
+                <i class="fa-solid fa-play"></i> Open in Preview
+              </button>
+              <button onclick="downloadVideo('/api/download/${exportData.exportFilename}', '${exportData.exportFilename}', this)" class="btn-copy" style="justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:8px; cursor:pointer; font-weight:600; border-radius:4px;">
+                <i class="fa-solid fa-download"></i> Download Video
+              </button>
+            </div>
+          </div>
+        `;
+        resultDiv.style.display = 'block';
+      }
 
     } catch (err) {
       console.error(`Autopilot error processing clip ${idx}:`, err);
@@ -1353,4 +1380,31 @@ window.downloadVideo = async function(url, filename, btn) {
     btn.style.pointerEvents = '';
     btn.innerHTML = originalHtml;
   }
+};
+
+// Open an autopilot exported video directly in the central Preview Screen
+window.previewAutopilotExport = function(exportUrl, exportFilename, title, description, hashtags, cropMode) {
+  // Load exported video in Result Screen
+  showSection(el.secExportResult);
+  
+  if (cropMode === 'crop' || cropMode === 'fit_blur') {
+    el.exportPreviewContainer.classList.remove('original-ratio');
+  } else {
+    el.exportPreviewContainer.classList.add('original-ratio');
+  }
+
+  el.exportPlayer.src = exportUrl;
+  el.exportPlayer.load();
+
+  // Bind the download button to this specific file
+  el.btnDownloadExport.href = '#';
+  el.btnDownloadExport.onclick = (e) => {
+    e.preventDefault();
+    downloadVideo(`/api/download/${exportFilename}`, exportFilename, el.btnDownloadExport);
+  };
+
+  // Populate virality optimizer fields
+  document.getElementById('virality-title').value = title || '';
+  document.getElementById('virality-description').value = description || '';
+  document.getElementById('virality-hashtags').value = hashtags || '';
 };
