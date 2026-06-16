@@ -571,11 +571,7 @@ app.post('/api/cut', async (req, res) => {
       '-ss', start.toString(),
       '-t', duration.toString(),
       '-c:v', 'libx264',
-      '-crf', '18',
-      '-preset', 'veryfast',
-      '-pix_fmt', 'yuv420p',
       '-c:a', 'aac',
-      '-b:a', '192k',
       '-avoid_negative_ts', 'make_zero',
       '-strict', '-2',
       clipPath
@@ -825,11 +821,11 @@ ${dialogueEvents.join('\n')}
     let filterComplex = '';
     
     if (activeCropMode === 'crop') {
-      // Crop to 9:16 aspect ratio (center crop), then apply subtitles.
-      filterComplex = `crop=ih*9/16:ih,subtitles=${assFilename}`;
+      // Crop to 9:16 aspect ratio (center crop) with even dimensions, then apply subtitles.
+      filterComplex = `crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
     } else if (activeCropMode === 'fit_blur') {
-      // Fit video inside a 9:16 canvas, applying a blurred background behind it.
-      filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=ih*9/16:ih:force_original_aspect_ratio=increase,crop=ih*9/16:ih,boxblur=20:5[bg];[fg_src]scale=ih*9/16:-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+      // Fit video inside a 9:16 canvas with even dimensions, applying a blurred background behind it.
+      filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
     } else {
       filterComplex = `subtitles=${assFilename}`;
     }
@@ -845,10 +841,8 @@ ${dialogueEvents.join('\n')}
       '-vf', filterComplex,
       '-c:v', 'libx264',
       '-crf', '18',
-      '-preset', 'veryfast',
+      '-preset', 'fast',
       '-pix_fmt', 'yuv420p',
-      '-profile:v', 'high',
-      '-level:v', '4.1',
       '-c:a', 'aac',
       '-b:a', '192k',
       '-strict', '-2',
@@ -924,25 +918,24 @@ function saveExportToHistory(exportItem) {
 }
 
 // ----------------------------------------------------
-// 6.5. Download Endpoint
+// 7. History Endpoints
 // ----------------------------------------------------
 app.get('/api/download/:filename', (req, res) => {
   const { filename } = req.params;
-  
-  // Security check: ensure path traversal is prevented
-  const safeFilename = path.basename(filename);
-  const filePath = path.join(__dirname, 'exports', safeFilename);
-  
-  if (fs.existsSync(filePath)) {
-    res.download(filePath, safeFilename);
-  } else {
-    res.status(404).json({ error: 'Video file not found.' });
+  const filePath = path.join(__dirname, 'exports', filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
   }
+  res.download(filePath, filename, (err) => {
+    if (err) {
+      console.error('Download error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to download file' });
+      }
+    }
+  });
 });
 
-// ----------------------------------------------------
-// 7. History Endpoints
-// ----------------------------------------------------
 app.get('/api/history', (req, res) => {
   try {
     const db = readDb();
