@@ -781,11 +781,9 @@ async function handleExport() {
     el.exportPlayer.src = data.exportUrl;
     el.exportPlayer.load();
 
-    el.btnDownloadExport.href = '#';
-    el.btnDownloadExport.onclick = (e) => {
-      e.preventDefault();
-      downloadVideo(`/api/download/${data.exportFilename}`, data.exportFilename, el.btnDownloadExport);
-    };
+    el.btnDownloadExport.href = `/api/download/${data.exportFilename}`;
+    el.btnDownloadExport.setAttribute('target', '_blank');
+    el.btnDownloadExport.onclick = null;
 
     // Populate virality optimizer fields
     document.getElementById('virality-title').value = state.selectedClip.title || '';
@@ -1008,9 +1006,9 @@ async function loadHistory() {
 
           <!-- Actions -->
           <div class="history-actions-col">
-            <button onclick="downloadVideo('/api/download/${item.exportFilename}', '${item.exportFilename}', this)" class="btn-copy" style="justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px; cursor:pointer;">
+            <a href="/api/download/${item.exportFilename}" target="_blank" class="btn-copy" style="text-decoration:none; justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:10px; cursor:pointer;">
               <i class="fa-solid fa-download"></i> Download Video
-            </button>
+            </a>
             
             <button class="btn-copy" onclick="copyHistoryText('${cleanTitle}', this, 'Title')">
               <i class="fa-regular fa-copy"></i> Copy Title
@@ -1308,9 +1306,9 @@ async function startAutopilotExecution(queuedClips) {
               <button onclick="previewAutopilotExport('${exportData.exportUrl}', '${exportData.exportFilename}', '${cleanTitle}', '${cleanDesc}', '${tagsStr}', '${clip.cropMode}')" class="btn-copy" style="justify-content:center; background:var(--secondary-color); color:#fff; border:none; text-align:center; padding:8px; cursor:pointer; font-weight:600; border-radius:4px;">
                 <i class="fa-solid fa-play"></i> Open in Preview
               </button>
-              <button onclick="downloadVideo('/api/download/${exportData.exportFilename}', '${exportData.exportFilename}', this)" class="btn-copy" style="justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:8px; cursor:pointer; font-weight:600; border-radius:4px;">
+              <a href="/api/download/${exportData.exportFilename}" target="_blank" class="btn-copy" style="text-decoration:none; justify-content:center; background:var(--primary-color); color:#fff; border:none; text-align:center; padding:8px; cursor:pointer; font-weight:600; border-radius:4px;">
                 <i class="fa-solid fa-download"></i> Download Video
-              </button>
+              </a>
             </div>
           </div>
         `;
