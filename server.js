@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
+const { Readable } = require('stream');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpegBinary = process.platform === 'win32' ? ffmpegStatic : 'ffmpeg';
 const { GoogleGenAI } = require('@google/genai');
@@ -231,6 +232,101 @@ app.post('/api/settings', (req, res) => {
   res.json({ success: true, message: 'Settings saved successfully.' });
 });
 
+// Helper to extract YouTube video ID
+function getYoutubeId(url) {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// Download YouTube video via public Invidious proxies to bypass data center blocks
+async function downloadYoutubeViaInvidious(url, videoPath) {
+  const videoId = getYoutubeId(url);
+  if (!videoId) throw new Error('Invalid YouTube URL');
+
+  console.log(`Resolving Invidious instances for Video ID: ${videoId}`);
+  
+  let instances = [];
+  try {
+    const res = await fetch('https://api.invidious.io/instances.json');
+    const data = await res.json();
+    instances = data
+      .filter(item => {
+        const info = item[1];
+        return info && info.type === 'https' && info.api === true && (!info.monitor || info.monitor.down === false);
+      })
+      .map(item => item[1].uri);
+  } catch (err) {
+    console.error('Failed to fetch dynamic Invidious instances:', err.message);
+  }
+
+  const staticFallback = [
+    'https://invidious.yewtu.be',
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://inv.thepixora.com',
+    'https://invidious.privacydev.net'
+  ];
+  
+  const allInstances = [...new Set([...instances, ...staticFallback])];
+  console.log(`Found ${allInstances.length} Invidious mirrors. Attempting download...`);
+
+  for (const instance of allInstances) {
+    try {
+      console.log(`Trying mirror: ${instance}`);
+      const apiUri = `${instance}/api/v1/videos/${videoId}?local=true`;
+      
+      const res = await fetch(apiUri, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) continue;
+      
+      const videoData = await res.json();
+      let streamUrl = '';
+      
+      if (videoData.formatStreams && videoData.formatStreams.length > 0) {
+        // Find 720p or 360p combined video+audio stream
+        const bestStream = videoData.formatStreams.find(s => s.quality === 'hd720' || s.label === '720p') || 
+                           videoData.formatStreams.find(s => s.quality === 'medium' || s.label === '360p') || 
+                           videoData.formatStreams[0];
+        streamUrl = bestStream.url;
+      }
+      
+      if (!streamUrl && videoData.adaptiveFormats && videoData.adaptiveFormats.length > 0) {
+        const videoStream = videoData.adaptiveFormats.find(s => s.type.startsWith('video/') && (s.qualityLabel === '720p' || s.qualityLabel === '360p')) || 
+                            videoData.adaptiveFormats.find(s => s.type.startsWith('video/'));
+        if (videoStream) {
+          streamUrl = videoStream.url;
+        }
+      }
+
+      if (!streamUrl) continue;
+
+      if (streamUrl.startsWith('/')) {
+        streamUrl = `${instance}${streamUrl}`;
+      }
+
+      console.log(`Downloading video stream from: ${streamUrl}`);
+      const downloadRes = await fetch(streamUrl, { signal: AbortSignal.timeout(300000) });
+      if (!downloadRes.ok) throw new Error(`Status ${downloadRes.status}`);
+
+      const fileStream = fs.createWriteStream(videoPath);
+      await new Promise((resolve, reject) => {
+        const readable = Readable.fromWeb(downloadRes.body);
+        readable.pipe(fileStream);
+        fileStream.on('finish', resolve);
+        fileStream.on('error', reject);
+        readable.on('error', reject);
+      });
+
+      console.log('Successfully downloaded video via Invidious mirror.');
+      return;
+    } catch (err) {
+      console.warn(`Mirror ${instance} failed: ${err.message}`);
+    }
+  }
+
+  throw new Error('All Invidious mirrors failed to download the video.');
+}
+
 // ----------------------------------------------------
 // 2. Video Import Endpoint
 // ----------------------------------------------------
@@ -250,44 +346,57 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
       videoPath = path.join(__dirname, 'downloads', `${videoId}.mp4`);
 
       console.log(`Downloading video from URL: ${url}`);
-      await new Promise((resolve, reject) => {
-        // Run yt-dlp to download best mp4
-        const args = [
-          '--no-check-certificate',
-          '-f', 'bestvideo+bestaudio/best',
-          '--merge-output-format', 'mp4',
-          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          '--referer', 'https://www.youtube.com/',
-          '--extractor-args', 'youtube:player_client=default,-android_sdkless',
-          '-o', videoPath,
-          url
-        ];
-
-        const localCookiesPath = path.join(__dirname, 'cookies.txt');
-        if (fs.existsSync(localCookiesPath)) {
-          args.unshift('--cookies', localCookiesPath);
+      
+      let downloadSuccessful = false;
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        try {
+          await downloadYoutubeViaInvidious(url, videoPath);
+          downloadSuccessful = true;
+        } catch (err) {
+          console.warn(`Invidious download failed: ${err.message}. Falling back to yt-dlp...`);
         }
+      }
 
-        if (process.platform === 'win32') {
-          args.unshift('--ffmpeg-location', ffmpegBinary);
-        }
+      if (!downloadSuccessful) {
+        await new Promise((resolve, reject) => {
+          // Run yt-dlp to download best mp4
+          const args = [
+            '--no-check-certificate',
+            '-f', 'bestvideo+bestaudio/best',
+            '--merge-output-format', 'mp4',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--referer', 'https://www.youtube.com/',
+            '--extractor-args', 'youtube:player_client=default,-android_sdkless',
+            '-o', videoPath,
+            url
+          ];
 
-        console.log(`Running yt-dlp ${args.join(' ')}`);
-        const proc = spawn('yt-dlp', args);
-        
-        let stderr = '';
-        proc.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        proc.on('close', (code) => {
-          if (code === 0) {
-            resolve();
-          } else {
-            reject(new Error(`yt-dlp exited with code ${code}. Error: ${stderr.slice(-200)}`));
+          const localCookiesPath = path.join(__dirname, 'cookies.txt');
+          if (fs.existsSync(localCookiesPath)) {
+            args.unshift('--cookies', localCookiesPath);
           }
+
+          if (process.platform === 'win32') {
+            args.unshift('--ffmpeg-location', ffmpegBinary);
+          }
+
+          console.log(`Running yt-dlp ${args.join(' ')}`);
+          const proc = spawn('yt-dlp', args);
+          
+          let stderr = '';
+          proc.stderr.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          proc.on('close', (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(`yt-dlp exited with code ${code}. Error: ${stderr.slice(-200)}`));
+            }
+          });
         });
-      });
+      }
     } else {
       return res.status(400).json({ error: 'Please provide either a video URL or a file upload.' });
     }
