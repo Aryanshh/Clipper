@@ -40,7 +40,6 @@ if (process.env.YOUTUBE_COOKIES) {
 }
 
 // Automatically update yt-dlp to the latest version on startup
-const { exec } = require('child_process');
 console.log('Checking for yt-dlp updates...');
 exec('yt-dlp -U', (err, stdout, stderr) => {
   if (err) {
