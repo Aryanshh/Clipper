@@ -626,7 +626,7 @@ app.post('/api/captions', async (req, res) => {
     const audioBase64 = fs.readFileSync(audioPath).toString('base64');
 
     console.log('Generating word-level captions inline...');
-    const prompt = `Transcribe this audio file. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
+    const prompt = `Transcribe this audio file in English. If the audio is in a language other than English, translate the spoken words and transcribe them in English only. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
 
     const response = await generateContentWithFallback(ai, {
       contents: [
