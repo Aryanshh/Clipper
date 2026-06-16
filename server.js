@@ -134,7 +134,7 @@ function runFFmpeg(args, cwd = __dirname) {
 
 // Helper: Run Gemini content generation with model fallbacks and retry backoffs
 async function generateContentWithFallback(ai, options) {
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-pro'];
   const maxRetries = 2;
   let lastError;
 
