@@ -3,7 +3,10 @@ node_modules/
 clips/
 downloads/
 exports/
+fonts/
+fontcache/
+temp_fonts.conf
+scratch/
+test_*.js
 *.log
 db.json
-fonts/
-temp_fonts.conf

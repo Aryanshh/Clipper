@@ -8,7 +8,29 @@ const { spawn, exec } = require('child_process');
 const { Readable } = require('stream');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpegBinary = process.platform === 'win32' ? ffmpegStatic : 'ffmpeg';
+
+// Provide relative/safe ffmpeg path to avoid Windows junction path and percent sign issues with yt-dlp
+const relativeFfmpeg = path.join('node_modules', 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+const safeFfmpegLocation = fs.existsSync(path.resolve(__dirname, relativeFfmpeg))
+  ? relativeFfmpeg
+  : ffmpegBinary;
+
+// Ensure ffmpeg directory is prepended to process.env.PATH so yt-dlp and child processes discover ffmpeg
+const ffmpegDir = path.dirname(path.resolve(__dirname, safeFfmpegLocation));
+if (!process.env.PATH.includes(ffmpegDir)) {
+  process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+}
+
 const { GoogleGenAI } = require('@google/genai');
+const youtubeService = require('./youtubeService');
+
+// Crash prevention handlers for background tasks & streams
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server Guard] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[Server Guard] Uncaught Exception:', err);
+});
 
 // Load environment variables
 dotenv.config();
@@ -97,11 +119,15 @@ function runFFmpeg(args, cwd = __dirname) {
     <cachedir>${path.join(__dirname, 'fontcache')}</cachedir>
 </fontconfig>`;
     
-    const fontsConfPath = path.join(__dirname, 'temp_fonts.conf');
+    const fontCacheDir = path.join(__dirname, 'fontcache');
+    if (!fs.existsSync(fontCacheDir)) {
+      try { fs.mkdirSync(fontCacheDir, { recursive: true }); } catch (e) {}
+    }
+    const fontsConfPath = path.join(fontCacheDir, `fonts_${Date.now()}_${Math.random().toString(36).slice(2)}.conf`);
     try {
       fs.writeFileSync(fontsConfPath, dynamicFontsConf, 'utf-8');
     } catch (err) {
-      console.error('Failed to write temp_fonts.conf:', err);
+      console.error('Failed to write temp fonts conf:', err);
     }
 
     const env = {
@@ -118,9 +144,9 @@ function runFFmpeg(args, cwd = __dirname) {
 
     proc.on('close', (code) => {
       // Clean up temp fonts.conf
-      fs.unlink(fontsConfPath, (err) => {
-        if (err) console.error('Error deleting temp_fonts.conf:', err);
-      });
+      try {
+        if (fs.existsSync(fontsConfPath)) fs.unlinkSync(fontsConfPath);
+      } catch (err) {}
 
       if (code === 0) {
         resolve();
@@ -134,7 +160,7 @@ function runFFmpeg(args, cwd = __dirname) {
 
 // Helper: Run Gemini content generation with model fallbacks and retry backoffs
 async function generateContentWithFallback(ai, options) {
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
   const maxRetries = 2;
   let lastError;
 
@@ -178,6 +204,7 @@ async function generateContentWithFallback(ai, options) {
 // ----------------------------------------------------
 app.get('/api/settings', (req, res) => {
   const key = process.env.GEMINI_API_KEY;
+  const ytKey = process.env.YOUTUBE_API_KEY;
   const cookiesPath = path.join(__dirname, 'cookies.txt');
   const hasCookies = fs.existsSync(cookiesPath);
   
@@ -190,24 +217,51 @@ app.get('/api/settings', (req, res) => {
     }
   }
 
+  const ytKeyMasked = ytKey && ytKey.trim().length > 8 ? `${ytKey.trim().slice(0, 4)}...${ytKey.trim().slice(-4)}` : (ytKey ? '****' : null);
+
   if (!key) {
-    return res.json({ configured: false, cookiesConfigured: hasCookies, cookiesContent });
+    return res.json({
+      configured: false,
+      cookiesConfigured: hasCookies,
+      cookiesContent,
+      youtubeApiConfigured: !!(ytKey && ytKey.trim()),
+      youtubeApiKeyMasked: ytKeyMasked
+    });
   }
   const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '****';
-  res.json({ configured: true, keyMasked: masked, cookiesConfigured: hasCookies, cookiesContent });
+  res.json({
+    configured: true,
+    keyMasked: masked,
+    cookiesConfigured: hasCookies,
+    cookiesContent,
+    youtubeApiConfigured: !!(ytKey && ytKey.trim()),
+    youtubeApiKeyMasked: ytKeyMasked
+  });
 });
 
 app.post('/api/settings', (req, res) => {
-  const { apiKey, youtubeCookies } = req.body;
+  const { apiKey, youtubeCookies, youtubeApiKey } = req.body;
   if (!apiKey || apiKey.trim() === '') {
-    return res.status(400).json({ error: 'API key is required.' });
+    return res.status(400).json({ error: 'Gemini API key is required.' });
   }
 
   process.env.GEMINI_API_KEY = apiKey.trim();
+
+  if (youtubeApiKey !== undefined) {
+    if (youtubeApiKey && youtubeApiKey.trim() !== '') {
+      process.env.YOUTUBE_API_KEY = youtubeApiKey.trim();
+    } else {
+      delete process.env.YOUTUBE_API_KEY;
+    }
+  }
   
   // Save to .env file
   const envPath = path.join(__dirname, '.env');
-  fs.writeFileSync(envPath, `GEMINI_API_KEY=${apiKey.trim()}\n`);
+  let envLines = [`GEMINI_API_KEY=${apiKey.trim()}`];
+  if (process.env.YOUTUBE_API_KEY) {
+    envLines.push(`YOUTUBE_API_KEY=${process.env.YOUTUBE_API_KEY}`);
+  }
+  fs.writeFileSync(envPath, envLines.join('\n') + '\n');
 
   // Save or delete cookies.txt
   const cookiesPath = path.join(__dirname, 'cookies.txt');
@@ -230,6 +284,38 @@ app.post('/api/settings', (req, res) => {
   }
 
   res.json({ success: true, message: 'Settings saved successfully.' });
+});
+
+// ----------------------------------------------------
+// 1.1 YouTube Search & Gaming Radar Endpoints
+// ----------------------------------------------------
+app.get('/api/youtube/presets', (req, res) => {
+  try {
+    res.json({ success: true, presets: youtubeService.getPresets() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/youtube/search', async (req, res) => {
+  try {
+    const query = req.query.q || 'GTA 6 live stream gaming';
+    const isLive = req.query.live === 'true' || req.query.live === '1';
+    const maxResults = parseInt(req.query.maxResults, 10) || 8;
+    const apiKey = req.query.apiKey || null;
+
+    const result = await youtubeService.search({
+      query,
+      isLive,
+      maxResults,
+      apiKey
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('YouTube search error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Helper to extract YouTube video ID
@@ -343,45 +429,137 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
     } else if (url) {
       // YouTube or direct link
       videoId = `yt_${Date.now()}`;
-      videoPath = path.join(__dirname, 'downloads', `${videoId}.mp4`);
+      const relativeVideoPath = path.join('downloads', `${videoId}.mp4`);
+      videoPath = path.resolve(__dirname, relativeVideoPath);
 
       console.log(`Downloading video from URL: ${url}`);
       
-      let downloadSuccessful = false;
-      if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        try {
-          await downloadYoutubeViaInvidious(url, videoPath);
-          downloadSuccessful = true;
-        } catch (err) {
-          console.warn(`Invidious download failed: ${err.message}. Falling back to yt-dlp...`);
+      // 1. Fast probe duration and live status to avoid multi-gigabyte stalls
+      let isLongVideo = false;
+      let isLive = false;
+      try {
+        const probeProc = spawn('yt-dlp', [
+          '--no-check-certificate',
+          '--no-playlist',
+          '--ffmpeg-location', safeFfmpegLocation,
+          '--extractor-args', 'youtube:player_client=android,web',
+          '--print', '%(duration)s|%(is_live)s',
+          url
+        ], { env: process.env, cwd: __dirname });
+        let probeOut = '';
+        probeProc.stdout.on('data', d => probeOut += d.toString());
+        await new Promise(r => {
+          probeProc.on('close', r);
+          setTimeout(r, 6000); // 6s timeout max for fast probe
+        });
+        const parts = probeOut.trim().split('|');
+        const dur = parseFloat(parts[0]) || 0;
+        isLive = parts[1] === 'True' || parts[1] === 'true';
+        if (dur > 900) {
+          isLongVideo = true;
+          console.log(`[Import] Video duration is ${dur}s. Enabling intelligent stream sectioning (first 15m) for ultra-fast download.`);
         }
+      } catch (probeErr) {
+        console.warn('[Import] Fast probe notice:', probeErr.message);
       }
 
-      if (!downloadSuccessful) {
+      // 2. High-speed download: active live stream vs long VOD vs standard video
+      if (isLive) {
+        console.log(`[Import] Video is an ACTIVE LIVE stream! Capturing 180s live buffer via direct HLS stream...`);
+        let liveHlsUrl = null;
+        try {
+          const gProc = spawn('yt-dlp', [
+            '--no-check-certificate',
+            '--ffmpeg-location', safeFfmpegLocation,
+            '--extractor-args', 'youtube:player_client=android,web',
+            '-g',
+            '-f', 'best[height<=720]/18/best',
+            url
+          ], { env: process.env, cwd: __dirname });
+          let gOut = '';
+          gProc.stdout.on('data', d => gOut += d.toString());
+          await new Promise(r => gProc.on('close', r));
+          liveHlsUrl = gOut.trim().split('\n')[0];
+        } catch (e) {
+          console.warn('[Import] Could not resolve direct HLS URL:', e.message);
+        }
+
+        if (liveHlsUrl) {
+          console.log(`[Import] Recording 180s of live stream with FFmpeg to ${relativeVideoPath}...`);
+          await new Promise((resolve, reject) => {
+            const ffProc = spawn(safeFfmpegLocation, [
+              '-y',
+              '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              '-i', liveHlsUrl,
+              '-t', '180',
+              '-c', 'copy',
+              relativeVideoPath
+            ], { env: process.env, cwd: __dirname });
+            
+            let stderr = '';
+            ffProc.stderr.on('data', d => stderr += d.toString());
+            ffProc.on('close', code => {
+              const found = [
+                videoPath,
+                path.resolve(__dirname, relativeVideoPath),
+                path.join(__dirname, 'downloads', `${videoId}.mp4`)
+              ].find(f => fs.existsSync(f) && fs.statSync(f).size > 10000);
+              
+              if (code === 0 && found) {
+                videoPath = found;
+                resolve();
+              } else {
+                reject(new Error(`FFmpeg live capture exited with code ${code}. Error: ${stderr.slice(-250)}`));
+              }
+            });
+          });
+        } else {
+          // Fallback to yt-dlp with --no-live-from-start
+          await new Promise((resolve, reject) => {
+            const proc = spawn('yt-dlp', [
+              '--no-check-certificate',
+              '--no-playlist',
+              '--ffmpeg-location', safeFfmpegLocation,
+              '--extractor-args', 'youtube:player_client=android,web',
+              '-f', 'best[height<=720]/18/best',
+              '--no-live-from-start',
+              '-o', relativeVideoPath,
+              url
+            ], { env: process.env, cwd: __dirname });
+            proc.on('close', code => {
+              if (code === 0 && fs.existsSync(videoPath)) resolve();
+              else reject(new Error(`yt-dlp live download failed with code ${code}`));
+            });
+          });
+        }
+      } else {
         await new Promise((resolve, reject) => {
-          // Run yt-dlp to download best mp4
           const args = [
             '--no-check-certificate',
-            '-f', 'bestvideo+bestaudio/best',
-            '--merge-output-format', 'mp4',
+            '--no-playlist',
+            '--ffmpeg-location', safeFfmpegLocation,
+            '--extractor-args', 'youtube:player_client=android,web',
+            '-f', 'best[height<=720]/18/bestvideo[height<=720]+bestaudio/best',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            '--referer', 'https://www.youtube.com/',
-            '--extractor-args', 'youtube:player_client=default,-android_sdkless',
-            '-o', videoPath,
-            url
+            '--referer', 'https://www.youtube.com/'
           ];
+
+          // For massive streams or long VODs (> 15 mins), download first 15 mins to avoid 20+ GB transfer
+          if (isLongVideo) {
+            args.push('--download-sections', '*0-900');
+          }
 
           const localCookiesPath = path.join(__dirname, 'cookies.txt');
           if (fs.existsSync(localCookiesPath)) {
             args.unshift('--cookies', localCookiesPath);
           }
 
-          if (process.platform === 'win32') {
-            args.unshift('--ffmpeg-location', ffmpegBinary);
-          }
+          // Use relative path for -o to avoid Windows percent sign / junction issues
+          args.push('-o', relativeVideoPath);
+          args.push(url);
 
           console.log(`Running yt-dlp ${args.join(' ')}`);
-          const proc = spawn('yt-dlp', args);
+          const proc = spawn('yt-dlp', args, { env: process.env, cwd: __dirname });
           
           let stderr = '';
           proc.stderr.on('data', (data) => {
@@ -389,10 +567,19 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
           });
 
           proc.on('close', (code) => {
-            if (code === 0) {
+            const found = [
+              videoPath,
+              path.resolve(__dirname, relativeVideoPath),
+              path.join(__dirname, 'downloads', `${videoId}.mkv`),
+              path.join(__dirname, 'downloads', `${videoId}.webm`),
+              path.join(__dirname, 'downloads', `${videoId}.mp4`)
+            ].find(f => fs.existsSync(f) && fs.statSync(f).size > 10000);
+
+            if (code === 0 && found) {
+              videoPath = found;
               resolve();
             } else {
-              reject(new Error(`yt-dlp exited with code ${code}. Error: ${stderr.slice(-200)}`));
+              reject(new Error(`yt-dlp exited with code ${code}. Error: ${stderr.slice(-250) || 'Download failed'}`));
             }
           });
         });
@@ -434,7 +621,7 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
 // 3. Gemini Video Analysis Endpoint
 // ----------------------------------------------------
 app.post('/api/analyze', async (req, res) => {
-  const { videoId } = req.body;
+  const { videoId, language = 'auto' } = req.body;
   if (!videoId) {
     return res.status(400).json({ error: 'videoId is required.' });
   }
@@ -466,7 +653,18 @@ app.post('/api/analyze', async (req, res) => {
       throw new Error(`File processing failed. State: ${fileState.state}`);
     }
 
-    const prompt = `Analyze the audio of this video to identify the most engaging, viral, or interesting segments optimized specifically for YouTube Shorts, Instagram Reels, and TikTok.
+    let langNotice = '';
+    if (language === 'hi') {
+      langNotice = 'The video audio may be in Hindi or English; generate all clip titles, hook explanations, and descriptions in Hindi (Devanagari or Hinglish).';
+    } else if (language === 'hinglish') {
+      langNotice = 'The video audio may be in Hindi or English; generate clip titles and descriptions in conversational Hinglish (Roman script).';
+    } else if (language === 'en') {
+      langNotice = 'The video audio may be in English or Hindi; generate all clip titles and descriptions in English.';
+    } else {
+      langNotice = 'The video audio may be in English, Hindi, or bilingual Hinglish. Generate clip titles and descriptions matching the video primary language.';
+    }
+
+    const prompt = `Analyze the audio of this video to identify the most engaging, viral, or interesting segments optimized specifically for YouTube Shorts, Instagram Reels, and TikTok. ${langNotice}
 Focus heavily on YT Shorts virality:
 1. Identify segments that start with a powerful, high-impact hook in the first 1-3 seconds.
 2. For each clip, the duration (end - start) MUST range between 30 and 90 seconds (i.e., at least 30 seconds and at most 90 seconds long). If the original video is shorter than 30 seconds, identify clips spanning the maximum possible duration.
@@ -527,6 +725,146 @@ Return the response strictly in JSON format matching the schema.`;
 
   } catch (error) {
     console.error('Analysis error:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    // Clean up file from Gemini cloud storage asynchronously
+    if (uploadResult) {
+      const ai = getGeminiClient();
+      ai.files.delete({ name: uploadResult.name }).catch(err => {
+        console.error('Failed to clean up Gemini file:', err.message);
+      });
+    }
+  }
+});
+
+// ----------------------------------------------------
+// Multilingual Transcription & Analysis Helpers (Hindi, English, Hinglish)
+// ----------------------------------------------------
+function getTranscriptionPrompt(language = 'auto') {
+  if (language === 'hi') {
+    return `Transcribe this audio file in Hindi using Devanagari script (हिंदी लिपि). If the audio is spoken in English or another language, translate and transcribe in natural, conversational Hindi in Devanagari script. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
+  } else if (language === 'hinglish') {
+    return `Transcribe this audio file in Hinglish (Hindi words written phonetically in English / Roman script, e.g. "Kya chal raha hai", "Yeh trick bahut amazing hai", "Aap sabhi ka swagat hai"). If the speaker is speaking Hindi, transliterate into Roman script. If speaking English, keep English words. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
+  } else if (language === 'en') {
+    return `Transcribe this audio file in English. If the audio is in a language other than English (such as Hindi), translate the spoken words and transcribe them in English only. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
+  } else {
+    // 'auto'
+    return `Transcribe this audio file accurately in its original spoken language (Hindi, English, or mixed Hinglish). If the speaker speaks Hindi, transcribe in Hindi. If speaking English, transcribe in English. If code-switching (bilingual Hindi + English), transcribe each word accurately in the language it was spoken in. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
+  }
+}
+
+function getAnalyzeTrimmedPrompt(language = 'auto') {
+  let langTask = '';
+  if (language === 'hi') {
+    langTask = `1. Transcribe the spoken words in Hindi using Devanagari script (हिंदी लिपि). If the audio is in English or another language, translate the spoken words and transcribe them in natural Hindi in Devanagari script. Return each word with precise 'start' and 'end' times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.
+2. Generate optimized metadata for social media (YT Shorts/Reels/TikTok) in Hindi / Hinglish including a catchy hook-focused Title, an engaging Description, and a list of 3 to 5 trending Hashtags.`;
+  } else if (language === 'hinglish') {
+    langTask = `1. Transcribe the spoken words in Hinglish (Hindi written phonetically in English/Roman alphabet, e.g. "Kya aapko pata hai", "Yeh trick try karo"). Return each word with precise 'start' and 'end' times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.
+2. Generate optimized metadata for social media in Hinglish including a catchy Title, an engaging Description, and trending Hashtags.`;
+  } else if (language === 'en') {
+    langTask = `1. Transcribe the spoken words in English. If the audio is in a language other than English (such as Hindi), translate the spoken words and transcribe them in English only. Return each word with precise 'start' and 'end' times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.
+2. Generate optimized metadata for social media (YT Shorts/Reels/TikTok) in English including a catchy hook-focused Title, an engaging Description, and a list of 3 to 5 trending Hashtags.`;
+  } else {
+    langTask = `1. Transcribe the spoken words accurately in their original spoken language (Hindi, English, or mixed Hinglish). Transcribe each word accurately in the language it was spoken in. Return each word with precise 'start' and 'end' times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.
+2. Generate optimized metadata for social media (YT Shorts/Reels/TikTok) matching the video language including a catchy hook-focused Title, an engaging Description, and a list of 3 to 5 trending Hashtags.`;
+  }
+
+  return `Analyze this video audio to perform two tasks:
+${langTask}
+
+Return the response strictly in JSON format matching the schema.`;
+}
+
+// ----------------------------------------------------
+// 3.5. Gemini Trimmed Video Analysis & Transcription Endpoint
+// ----------------------------------------------------
+app.post('/api/analyze-trimmed', async (req, res) => {
+  const { videoId, language = 'auto' } = req.body;
+  if (!videoId) {
+    return res.status(400).json({ error: 'videoId is required.' });
+  }
+
+  const audioPath = path.join(__dirname, 'downloads', `audio_${videoId}.mp3`);
+  if (!fs.existsSync(audioPath)) {
+    return res.status(404).json({ error: 'Audio file not found. Please re-import the video.' });
+  }
+
+  let uploadResult;
+  try {
+    const ai = getGeminiClient();
+
+    console.log(`Uploading audio to Gemini Files API: ${audioPath}`);
+    uploadResult = await ai.files.upload({
+      file: audioPath,
+      mimeType: 'audio/mp3',
+    });
+
+    console.log(`File uploaded: ${uploadResult.name}. Checking status...`);
+    let fileState = await ai.files.get({ name: uploadResult.name });
+    while (fileState.state === 'PROCESSING') {
+      console.log('Waiting for file processing...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      fileState = await ai.files.get({ name: uploadResult.name });
+    }
+
+    if (fileState.state !== 'ACTIVE') {
+      throw new Error(`File processing failed. State: ${fileState.state}`);
+    }
+
+    const prompt = getAnalyzeTrimmedPrompt(language);
+
+    const response = await generateContentWithFallback(ai, {
+      contents: [
+        {
+          fileData: {
+            fileUri: uploadResult.uri,
+            mimeType: uploadResult.mimeType
+          }
+        },
+        prompt
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING' },
+            description: { type: 'STRING' },
+            hashtags: {
+              type: 'ARRAY',
+              items: { type: 'STRING' }
+            },
+            captions: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  word: { type: 'STRING' },
+                  start: { type: 'NUMBER' },
+                  end: { type: 'NUMBER' }
+                },
+                required: ['word', 'start', 'end']
+              }
+            }
+          },
+          required: ['title', 'description', 'hashtags', 'captions']
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text);
+    console.log('Trimmed analysis successful.');
+
+    res.json({
+      success: true,
+      title: result.title,
+      description: result.description,
+      hashtags: result.hashtags,
+      captions: result.captions
+    });
+
+  } catch (error) {
+    console.error('Trimmed analysis error:', error);
     res.status(500).json({ error: error.message });
   } finally {
     // Clean up file from Gemini cloud storage asynchronously
@@ -610,7 +948,7 @@ app.post('/api/cut', async (req, res) => {
 // 5. Word-level Caption Generation Endpoint
 // ----------------------------------------------------
 app.post('/api/captions', async (req, res) => {
-  const { clipAudioFilename } = req.body;
+  const { clipAudioFilename, language = 'auto' } = req.body;
   if (!clipAudioFilename) {
     return res.status(400).json({ error: 'clipAudioFilename is required.' });
   }
@@ -622,11 +960,11 @@ app.post('/api/captions', async (req, res) => {
 
   try {
     const ai = getGeminiClient();
-    console.log(`Reading clip audio for inline transcription: ${audioPath}`);
+    console.log(`Reading clip audio for inline transcription (lang: ${language}): ${audioPath}`);
     const audioBase64 = fs.readFileSync(audioPath).toString('base64');
 
-    console.log('Generating word-level captions inline...');
-    const prompt = `Transcribe this audio file in English. If the audio is in a language other than English, translate the spoken words and transcribe them in English only. Return a JSON array where each item represents a single word with its precise start and end times in seconds relative to the audio start. Keep the timestamps highly accurate. Do not skip any words.`;
+    console.log(`Generating word-level captions inline (language: ${language})...`);
+    const prompt = getTranscriptionPrompt(language);
 
     const response = await generateContentWithFallback(ai, {
       contents: [
@@ -671,14 +1009,19 @@ app.post('/api/captions', async (req, res) => {
 // ----------------------------------------------------
 app.post('/api/export', async (req, res) => {
   try {
-    const { clipFilename, captions, style, crop, cropMode, font, title, description, hashtags } = req.body;
+    const { clipFilename, captions, style, crop, cropMode, font, title, description, hashtags, aiMirror, hflip } = req.body;
     if (!clipFilename || !captions || !Array.isArray(captions)) {
       return res.status(400).json({ error: 'clipFilename and captions array are required.' });
     }
 
-    const clipPath = path.join(__dirname, 'clips', clipFilename);
+    let inputPath = clipFilename;
+    let clipPath = path.join(__dirname, 'clips', clipFilename);
     if (!fs.existsSync(clipPath)) {
-      return res.status(404).json({ error: 'Clip file not found.' });
+      clipPath = path.join(__dirname, 'downloads', clipFilename);
+      if (!fs.existsSync(clipPath)) {
+        return res.status(404).json({ error: 'Clip file not found.' });
+      }
+      inputPath = `../downloads/${clipFilename}`;
     }
 
     // Style specifications in ASS format (&H<A><B><G><R>)
@@ -692,7 +1035,42 @@ app.post('/api/export', async (req, res) => {
     let shadow = 0;
     let fontName = 'Arial';
 
-    if (style === 'cyberpunk') {
+    if (style === 'hormozi') {
+      primaryColor = '00FFFFFF'; // White
+      activeColor = '0000FF66';  // Electric Lime Green (BGR: 66, FF, 00)
+      outlineColor = '00000000'; // Pure Black Outline
+      fontSize = 32;
+      alignment = 5; // Middle center
+      outline = 4;
+      fontName = 'The Bold Font';
+    } else if (style === 'mrbeast') {
+      primaryColor = '00FFFFFF'; // White
+      activeColor = '0000E6FF';  // Sunburst Gold / Yellow (BGR: FF, E6, 00)
+      outlineColor = '00000000'; // Black Outline
+      fontSize = 34;
+      alignment = 5;
+      outline = 5;
+      shadow = 2;
+      fontName = 'Bangers';
+    } else if (style === 'fire_glow') {
+      primaryColor = '00FFFFFF'; // White
+      activeColor = '000055FF';  // Blaze Orange (BGR: FF, 55, 00)
+      outlineColor = '00001133'; // Dark Crimson / Red Outline
+      fontSize = 32;
+      alignment = 5;
+      outline = 4.5;
+      shadow = 2;
+      fontName = 'The Bold Font';
+    } else if (style === 'highlighter') {
+      primaryColor = '00FFFFFF'; // White
+      activeColor = '0000E6FF';  // Electric Highlighter Yellow
+      outlineColor = '00222222';
+      fontSize = 24;
+      alignment = 2; // Bottom center
+      outline = 2;
+      borderStyle = 3; // Box/Pill background in ASS
+      fontName = 'Montserrat Black';
+    } else if (style === 'cyberpunk') {
       primaryColor = '00FFFF00'; // Cyan
       activeColor = '00FF00FF';  // Hot Pink
       outlineColor = '00330033'; // Deep Violet Outline
@@ -710,12 +1088,12 @@ app.post('/api/export', async (req, res) => {
       fontName = 'Arial';
     } else {
       // Default / TikTok Yellow
-      fontName = 'Arial';
+      fontName = 'The Bold Font';
       fontSize = 28;
       primaryColor = '00FFFFFF';
-      activeColor = '0000FFFF';
+      activeColor = '0000FFFF'; // Yellow
       outlineColor = '00000000';
-      outline = 3;
+      outline = 3.5;
       alignment = 5; // Centered
     }
 
@@ -726,10 +1104,20 @@ app.post('/api/export', async (req, res) => {
       'bangers': 'Bangers',
       'fredoka_one': 'Fredoka One',
       'impact': 'Impact',
-      'arial': 'Arial'
+      'arial': 'Arial',
+      'nirmala_ui': 'Nirmala UI',
+      'segoe_ui': 'Segoe UI'
     };
     if (font && fontMapping[font]) {
       fontName = fontMapping[font];
+    }
+
+    // Devanagari Hindi detection: if captions contain Devanagari Unicode characters,
+    // ensure fontName is compatible with Devanagari glyphs (Nirmala UI or Segoe UI)
+    const hasDevanagari = captions.some(c => /[\u0900-\u097F]/.test(c.word || ''));
+    if (hasDevanagari && (!font || font === 'the_bold_font' || font === 'bangers' || font === 'montserrat_black' || font === 'impact')) {
+      console.log('Devanagari Hindi characters detected in captions. Applying Nirmala UI font for clean glyph rendering.');
+      fontName = 'Nirmala UI';
     }
 
     // Group captions into short high-impact phrases for virality
@@ -817,17 +1205,39 @@ ${dialogueEvents.join('\n')}
     const exportFilename = `export_${Date.now()}.mp4`;
     const exportPath = path.join(__dirname, 'exports', exportFilename);
 
+    let mainVideoFilter = '';
+    if (aiMirror) {
+      mainVideoFilter += 'split[orig][edges];[orig]eq=contrast=1.15:saturation=1.4[orig_styled];[edges]edgedetect=low=0.08:high=0.20,negate[edges_out];[orig_styled][edges_out]blend=all_mode=multiply';
+    }
+    if (hflip) {
+      if (mainVideoFilter) {
+        mainVideoFilter += ',hflip';
+      } else {
+        mainVideoFilter += 'hflip';
+      }
+    }
+
     const activeCropMode = cropMode || (crop ? 'crop' : 'original');
     let filterComplex = '';
     
     if (activeCropMode === 'crop') {
-      // Crop to 9:16 aspect ratio (center crop) with even dimensions, then apply subtitles.
-      filterComplex = `crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
+      if (mainVideoFilter) {
+        filterComplex = `${mainVideoFilter},crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
+      } else {
+        filterComplex = `crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
+      }
     } else if (activeCropMode === 'fit_blur') {
-      // Fit video inside a 9:16 canvas with even dimensions, applying a blurred background behind it.
-      filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+      if (mainVideoFilter) {
+        filterComplex = `${mainVideoFilter}[styled_base];[styled_base]split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+      } else {
+        filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+      }
     } else {
-      filterComplex = `subtitles=${assFilename}`;
+      if (mainVideoFilter) {
+        filterComplex = `${mainVideoFilter},subtitles=${assFilename}`;
+      } else {
+        filterComplex = `subtitles=${assFilename}`;
+      }
     }
 
     console.log(`Running export with filter: ${filterComplex}`);
@@ -837,7 +1247,7 @@ ${dialogueEvents.join('\n')}
     // The output file is in 'exports/exportFilename' -> relative path is '../exports/exportFilename'
     await runFFmpeg([
       '-y',
-      '-i', clipFilename,
+      '-i', inputPath,
       '-vf', filterComplex,
       '-c:v', 'libx264',
       '-crf', '18',
@@ -922,7 +1332,14 @@ function saveExportToHistory(exportItem) {
 // ----------------------------------------------------
 app.get('/api/download/:filename', (req, res) => {
   const { filename } = req.params;
-  const filePath = path.join(__dirname, 'exports', filename);
+  let filePath = path.join(__dirname, 'exports', filename);
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(__dirname, 'downloads', filename);
+  }
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(__dirname, 'clips', filename);
+  }
+
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }
@@ -975,6 +1392,176 @@ app.delete('/api/history/:id', (req, res) => {
 
     res.json({ success: true, message: 'History item deleted.' });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ----------------------------------------------------
+// 8. Live Stream Capture & Ready-to-Push Queue Endpoints
+// ----------------------------------------------------
+const LiveStreamService = require('./liveStreamService');
+const liveStreamService = new LiveStreamService({
+  runFFmpeg,
+  getGeminiClient,
+  generateContentWithFallback,
+  readDb,
+  writeDb,
+  ffmpegBinary,
+  ensureFonts
+});
+
+app.post('/api/live/start', async (req, res) => {
+  try {
+    const { url, sensitivity, style, cropMode } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: 'Live stream URL is required.' });
+    }
+    const status = await liveStreamService.startCapture(url, { sensitivity, style, cropMode });
+    res.json({ success: true, status });
+  } catch (error) {
+    console.error('Error starting live capture:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/live/stop', (req, res) => {
+  try {
+    const result = liveStreamService.stopCapture();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/live/status', (req, res) => {
+  try {
+    res.json({ success: true, status: liveStreamService.getStatus() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/live/trigger-test', async (req, res) => {
+  try {
+    const clip = await liveStreamService.triggerTestEvent();
+    res.json({ success: true, clip });
+  } catch (error) {
+    console.error('Error triggering test clip:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/live/queue', (req, res) => {
+  try {
+    const queue = liveStreamService.getQueue();
+    res.json({ success: true, queue });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/live/queue/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = liveStreamService.updateQueueItem(id, req.body);
+    res.json({ success: true, item: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/live/queue/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = liveStreamService.deleteQueueItem(id);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ----------------------------------------------------
+// 9. Turbo 4x Multiprocessing Pipeline Endpoints
+// ----------------------------------------------------
+const TurboBatchService = require('./turboBatchService');
+const turboBatchService = new TurboBatchService({
+  runFFmpeg,
+  getGeminiClient,
+  generateContentWithFallback,
+  readDb,
+  writeDb,
+  ffmpegBinary,
+  ensureFonts
+});
+
+// Start background Turbo Multiprocess job (supports flexible high-density clip counts)
+app.post('/api/turbo/start', async (req, res) => {
+  try {
+    const { videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips, maxClips = 'auto' } = req.body;
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId is required.' });
+    }
+
+    const batchPromise = turboBatchService.startTurboBatch({
+      videoId,
+      language,
+      styleMode,
+      cropMode,
+      manualClips,
+      maxClips
+    });
+
+    const batchId = Array.from(turboBatchService.activeBatches.keys()).pop();
+
+    res.json({
+      success: true,
+      batchId,
+      message: 'Turbo multiprocessing pipeline initiated.'
+    });
+
+    batchPromise.catch(err => {
+      console.error(`[TurboBatch ${batchId}] Execution error:`, err);
+    });
+  } catch (error) {
+    console.error('Error starting turbo batch:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get real-time status of a Turbo batch
+app.get('/api/turbo/status/:batchId', (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const status = turboBatchService.getBatchStatus(batchId);
+    if (!status) {
+      return res.status(404).json({ error: 'Batch job not found.' });
+    }
+    res.json({ success: true, status });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Synchronous execute endpoint (waits and returns completed clips)
+app.post('/api/turbo/execute', async (req, res) => {
+  try {
+    const { videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips, maxClips = 'auto' } = req.body;
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId is required.' });
+    }
+
+    const result = await turboBatchService.startTurboBatch({
+      videoId,
+      language,
+      styleMode,
+      cropMode,
+      manualClips,
+      maxClips
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error executing turbo batch:', error);
     res.status(500).json({ error: error.message });
   }
 });

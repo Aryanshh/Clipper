@@ -5,13 +5,14 @@ FROM node:20-slim
 # - python3: required by yt-dlp
 # - ffmpeg: required for video slicing & audio extraction
 # - curl: to download yt-dlp
-# - fontconfig & fonts-dejavu: required for subtitle/caption burn-in
+# - fontconfig, fonts-dejavu, fonts-indic: required for subtitle/caption burn-in and multilingual Hindi/Indian support
 RUN apt-get update && apt-get install -y \
     python3 \
     ffmpeg \
     curl \
     fontconfig \
     fonts-dejavu \
+    fonts-indic \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up non-root directory using the image's pre-configured node user (UID 1000)
@@ -34,16 +35,17 @@ RUN npm ci --only=production
 COPY --chown=node:node . .
 
 # Create necessary directories and ensure they are owned by the node user
-RUN mkdir -p downloads clips exports && chown -R node:node /home/node/app
+RUN mkdir -p downloads clips exports fonts fontcache && chown -R node:node /home/node/app
 
 # Switch to node user
 USER node
 
-# Set environment variables
-ENV PORT=3000
+# Set environment variables (7860 is Hugging Face Spaces default port)
+ENV PORT=7860
 ENV NODE_ENV=production
 
-# Expose port
+# Expose ports (7860 for Hugging Face Spaces, 3000 as secondary)
+EXPOSE 7860
 EXPOSE 3000
 
 # Start the application

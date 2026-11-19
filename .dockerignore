@@ -4,11 +4,13 @@ clips
 exports
 db.json
 fonts
+fontcache
 temp_fonts.conf
+scratch
+test_*.js
 .env
 .git
 .gitignore
-Dockerfile
 render.yaml
 walkthrough.md
 *.log

@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Clipper AI - Automated Social Media Video Clipper & Captioner</title>
-  <!-- Google Fonts -->
+  <!-- Google Fonts: IBM Plex Serif (Headlines), Inter (Body/UI), JetBrains Mono (Micro/Code), & Display presets -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Montserrat:wght@900&family=Bangers&family=Fredoka:wght@600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Montserrat:wght@900&family=Bangers&family=Fredoka:wght@600&display=swap" rel="stylesheet">
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom Styles -->
@@ -23,6 +23,10 @@
         <span>CLIPPER<span class="logo-accent">AI</span></span>
       </div>
       <div class="nav-actions">
+        <button id="btn-open-queue" class="btn-icon" title="Ready to Push Queue" style="position: relative;">
+          <i class="fa-solid fa-bolt" style="color: #ffcc00;"></i>
+          <span id="queue-badge" class="badge-count" style="display: none; position: absolute; top: -5px; right: -5px; background: #ff3b30; color: #fff; font-size: 10px; font-weight: bold; border-radius: 10px; padding: 2px 6px;">0</span>
+        </button>
         <button id="btn-open-history" class="btn-icon" title="Export History">
           <i class="fa-solid fa-clock-rotate-left"></i>
         </button>
@@ -51,20 +55,63 @@
           <button class="tab-btn" data-tab="tab-upload">
             <i class="fa-solid fa-upload tab-icon"></i> Upload Local File
           </button>
+          <button class="tab-btn" data-tab="tab-trimmed">
+            <i class="fa-solid fa-scissors tab-icon"></i> Pre-Trimmed Clip
+          </button>
+          <button class="tab-btn" data-tab="tab-livestream">
+            <i class="fa-solid fa-tower-broadcast tab-icon" style="color: #ff3b30;"></i> Live Stream Capture
+          </button>
+        </div>
+
+        <!-- Turbo Multiprocessing Engine Toggle (Multi-Clip Gaming Stream Extraction) -->
+        <div class="turbo-toggle-container" style="padding: 16px 24px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: rgba(89, 73, 122, 0.12);">
+          <div class="toggle-info" style="flex: 1; min-width: 260px;">
+            <span style="font-weight: 700; font-size: 14.5px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-bolt-lightning" style="color: #f59e0b;"></i> Turbo Multiprocess: Multi-Clip Gaming Extraction
+              <span class="badge" style="background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color: #f59e0b; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px;">HIGH DENSITY</span>
+            </span>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">
+              Parallel fan-out: simultaneously discovers all viral gaming moments (kills, clutches, reactions), cuts, transcribes speech, highlights text with rotating creative styles (Hormozi, MrBeast, Fire Glow, Cyberpunk, Highlighter, TikTok, Minimalist), and burns 9:16 vertical video.
+            </p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="turbo-clip-count" style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Target:</label>
+              <select id="turbo-clip-count" class="form-control" style="width: auto; padding: 5px 12px; font-size: 12px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+                <option value="auto" selected>🔥 All Possible (Max Virality)</option>
+                <option value="4">4 Clips</option>
+                <option value="6">6 Clips</option>
+                <option value="8">8 Clips</option>
+                <option value="10">10 Clips</option>
+                <option value="12">12 Clips</option>
+              </select>
+            </div>
+            <label class="switch" title="Toggle Turbo Multiprocessing">
+              <input type="checkbox" id="turbo-mode-checkbox" checked>
+              <span class="slider round"></span>
+            </label>
+          </div>
         </div>
 
         <!-- Autopilot Workflow Toggle -->
-        <div class="autopilot-toggle-container" style="padding: 16px 24px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; justify-content: space-between;">
-          <div class="toggle-info">
-            <span style="font-weight: 600; font-size: 14.5px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-robot" style="color: var(--secondary-color);"></i> Autopilot Batch Exporter
+        <div class="autopilot-toggle-container" style="display: none;">
+          <input type="checkbox" id="autopilot-checkbox">
+        </div>
+
+        <!-- Multilingual Transcription Language Selector (Hindi & English) -->
+        <div class="transcription-lang-container" style="padding: 14px 24px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; background: rgba(0,0,0,0.15);">
+          <div class="lang-info">
+            <span style="font-weight: 500; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-language" style="color: var(--primary-color);"></i> Transcription Language
             </span>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Automatically download, transcribe, style (Fit & Blur), and export top viral clips in one go.</p>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 2px 0 0 0;">Transcribe in Hindi (हिंदी), English, Hinglish, or Auto-detect original speech.</p>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="autopilot-checkbox">
-            <span class="slider round"></span>
-          </label>
+          <select id="transcription-lang" class="style-select" style="max-width: 220px; padding: 8px 12px; font-size: 13px;">
+            <option value="auto" selected>🌐 Auto (Hindi / English / Mixed)</option>
+            <option value="hi">🇮🇳 Hindi (हिंदी Devanagari)</option>
+            <option value="hinglish">🇮🇳 Hinglish (Hindi in Roman script)</option>
+            <option value="en">🇺🇸 English</option>
+          </select>
         </div>
 
         <div class="tab-content active" id="tab-youtube">
@@ -77,6 +124,15 @@
               <i class="fa-solid fa-circle-down"></i> Import & Process
             </button>
           </form>
+
+          <div style="margin-top: 14px; padding: 10px 14px; background: rgba(0,0,0,0.25); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span style="font-size: 12px; color: var(--text-secondary);">
+              <i class="fa-solid fa-gamepad" style="color: var(--accent-pink); margin-right: 6px;"></i> Looking for GTA 6 or Gaming live streams to clip?
+            </span>
+            <button type="button" id="btn-jump-live-streams" class="btn-secondary" style="font-size: 11px; padding: 4px 12px; border-radius: var(--border-radius-pill); cursor: pointer;">
+              Explore Live Streams <i class="fa-solid fa-arrow-right" style="margin-left: 4px;"></i>
+            </button>
+          </div>
         </div>
 
         <div class="tab-content" id="tab-upload">
@@ -89,6 +145,123 @@
             <input type="file" id="local-file" accept="video/*" style="display: none;">
             <div id="selected-file-name" class="selected-file"></div>
           </div>
+        </div>
+
+        <div class="tab-content" id="tab-trimmed">
+          <div id="drop-zone-trimmed" class="drop-zone">
+            <i class="fa-solid fa-scissors drop-icon" style="color: var(--secondary-color);"></i>
+            <h3>Drag & Drop Pre-Trimmed Video</h3>
+            <p>Upload a video that is already edited/trimmed. We will generate subtitles directly.</p>
+            <span class="or-divider">or</span>
+            <label for="trimmed-file" class="btn-secondary" style="border-color: var(--secondary-color); color: var(--secondary-color);">Browse Trimmed File</label>
+            <input type="file" id="trimmed-file" accept="video/*" style="display: none;">
+            <div id="selected-trimmed-name" class="selected-file"></div>
+          </div>
+        </div>
+
+        <!-- Live Stream Capture Tab -->
+        <div class="tab-content" id="tab-livestream">
+          <!-- Live Gaming & GTA 6 Stream Discovery Radar -->
+          <div class="stream-discovery-panel" style="margin-bottom: 24px; padding: 18px; border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); background: rgba(0, 0, 0, 0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h3 style="font-family: var(--font-display); font-size: 1.15rem; color: var(--text-primary); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-solid fa-gamepad" style="color: var(--accent-pink);"></i>
+                  Live Gaming &amp; GTA 6 Stream Radar
+                </h3>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0;">
+                  Fetch live GTA 6 &amp; gaming broadcasts via YouTube API / yt-dlp. Click to immediately capture and auto-clip.
+                </p>
+              </div>
+              <div id="yt-search-source-indicator" class="badge" style="font-family: var(--font-mono); font-size: 0.72rem; padding: 4px 10px; background: rgba(89, 73, 122, 0.25); border: 1px solid var(--accent-color); color: var(--text-primary); border-radius: 9999px;">
+                <i class="fa-brands fa-youtube" style="color: #ff3b30; margin-right: 4px;"></i> YouTube Search Ready
+              </div>
+            </div>
+
+            <!-- Preset Chips -->
+            <div class="preset-chips-container" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;">
+              <button type="button" class="preset-chip active" data-query="GTA 6 live stream gaming" data-live="true">
+                🎮 GTA 6 Live Streams
+              </button>
+              <button type="button" class="preset-chip" data-query="GTA 6 gameplay leaks reaction" data-live="false">
+                🏎️ GTA 6 Gameplay
+              </button>
+              <button type="button" class="preset-chip" data-query="GTA 5 RP live stream gaming" data-live="true">
+                🔥 GTA V RP Live
+              </button>
+              <button type="button" class="preset-chip" data-query="gaming live stream" data-live="true">
+                ⚡ Trending Gaming Live
+              </button>
+            </div>
+
+            <!-- Search Bar with Fetch Button -->
+            <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+              <div class="input-group" style="flex: 1; margin: 0;">
+                <i class="fa-solid fa-magnifying-glass input-icon"></i>
+                <input type="text" id="stream-search-input" placeholder="Search GTA 6, streamer, or gaming topic..." value="GTA 6 live stream gaming">
+              </div>
+              <button type="button" id="btn-fetch-streams" class="btn-primary" style="white-space: nowrap; padding: 0 18px; background: var(--primary-color);">
+                <i class="fa-solid fa-satellite-dish"></i> Fetch Streams
+              </button>
+            </div>
+
+            <!-- Stream Results Container -->
+            <div id="stream-search-results" class="stream-results-grid">
+              <div style="grid-column: 1 / -1; text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.9rem;">
+                <i class="fa-solid fa-satellite-dish" style="font-size: 24px; margin-bottom: 8px; opacity: 0.6; display: block;"></i>
+                Click a preset above or tap <strong>Fetch Streams</strong> to scan for live GTA 6 &amp; gaming broadcasts.
+              </div>
+            </div>
+          </div>
+
+          <form id="form-import-live" class="import-form">
+            <div class="input-group">
+              <i class="fa-solid fa-tower-broadcast input-icon" style="color: #ff3b30;"></i>
+              <input type="url" id="live-url" placeholder="https://www.youtube.com/watch?v=... (YouTube Live Stream)" required>
+            </div>
+            
+            <div class="live-settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 16px 0; background: rgba(0,0,0,0.25); padding: 14px; border-radius: var(--border-radius-sm); border: 1px solid var(--panel-border);">
+              <div>
+                <label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">
+                  <i class="fa-solid fa-gauge-high"></i> Hype Reaction Sensitivity
+                </label>
+                <select id="live-sensitivity" class="style-select" style="width: 100%;">
+                  <option value="65" selected>Standard Hype (Recommended 65%)</option>
+                  <option value="50">High Hype (More Clips - 50%)</option>
+                  <option value="80">Extreme Hype Only (Fewer Clips - 80%)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">
+                  <i class="fa-solid fa-palette"></i> Creative Subtitle Style
+                </label>
+                <select id="live-style" class="style-select" style="width: 100%;">
+                  <option value="hormozi" selected>Alex Hormozi Lime (Viral)</option>
+                  <option value="mrbeast">MrBeast Hype (High Energy)</option>
+                  <option value="fire_glow">Fire & Flame Glow (Trending)</option>
+                  <option value="highlighter">Highlighter Pill (Aesthetic)</option>
+                  <option value="tiktok">TikTok Yellow (Classic)</option>
+                  <option value="cyberpunk">Cyberpunk Neon</option>
+                  <option value="minimalist">Minimalist White</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">
+                  <i class="fa-solid fa-mobile-screen"></i> Output Aspect Ratio
+                </label>
+                <select id="live-crop-mode" class="style-select" style="width: 100%;">
+                  <option value="crop" selected>9:16 Center Crop</option>
+                  <option value="fit_blur">9:16 Fit & Blur Background</option>
+                </select>
+              </div>
+            </div>
+
+            <button type="submit" id="btn-start-live" class="btn-primary" style="background: linear-gradient(135deg, #ff3b30, #ff9500); border: none;">
+              <i class="fa-solid fa-circle-play"></i> Start Live Capture & Auto-Clipping
+            </button>
+          </form>
         </div>
       </div>
     </section>
@@ -114,6 +287,116 @@
         </div>
       </div>
 
+      <!-- Live Stream Real-Time Monitor Panel -->
+      <div id="live-stream-panel" class="glass-panel" style="display: none; margin-bottom: 24px; padding: 20px; border: 1px solid rgba(255, 59, 48, 0.4); background: rgba(20, 10, 15, 0.6);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="live-pulse-badge" style="background: #ff3b30; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; display: flex; align-items: center; gap: 6px;">
+              <span class="pulse-dot"></span> LIVE CAPTURE
+            </span>
+            <h2 id="live-stream-title" style="font-size: 1.1rem; margin: 0; color: #fff;">Stream Title</h2>
+            <span id="live-stream-uploader" style="font-size: 0.85rem; color: var(--text-muted);">(Channel)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button id="btn-live-test-trigger" class="btn-secondary" style="border-color: #ffcc00; color: #ffcc00; font-size: 12px; padding: 6px 12px;">
+              <i class="fa-solid fa-bolt"></i> Trigger Test Clip
+            </button>
+            <button id="btn-live-stop" class="btn-secondary" style="border-color: #ff3b30; color: #ff3b30; font-size: 12px; padding: 6px 12px;">
+              <i class="fa-solid fa-stop"></i> Stop Capture
+            </button>
+          </div>
+        </div>
+
+        <!-- Telemetry Meters Grid -->
+        <div class="live-telemetry-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 16px;">
+          <!-- Viewers & Duration -->
+          <div class="telemetry-card" style="background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--panel-border);">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Live Viewers</div>
+            <div id="live-stat-viewers" style="font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 4px;">0</div>
+            <div id="live-stat-duration" style="font-size: 11px; color: var(--secondary-color); margin-top: 2px;">Duration: 00:00:00</div>
+          </div>
+
+          <!-- Chat Reaction Velocity -->
+          <div class="telemetry-card" style="background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--panel-border);">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Chat Velocity</div>
+            <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 4px;">
+              <span id="live-stat-chat" style="font-size: 1.4rem; font-weight: 700; color: #00e5ff;">0</span>
+              <span style="font-size: 11px; color: var(--text-muted);">msgs/min</span>
+            </div>
+            <div id="live-chat-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Normal Chat Traffic</div>
+          </div>
+
+          <!-- Audio Peak Level -->
+          <div class="telemetry-card" style="background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--panel-border);">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Audio Energy (Peak)</div>
+            <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 4px;">
+              <span id="live-stat-audio" style="font-size: 1.4rem; font-weight: 700; color: #00e676;">-25</span>
+              <span style="font-size: 11px; color: var(--text-muted);">dB</span>
+            </div>
+            <div id="live-audio-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Speech Energy Normal</div>
+          </div>
+
+          <!-- Total Hybrid Hype Score -->
+          <div class="telemetry-card" style="background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--panel-border);">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); text-transform: uppercase;">
+              <span>Viral Hype Score</span>
+              <span id="live-stat-hype">0 / 65</span>
+            </div>
+            <div class="hype-meter-bar" style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 10px; position: relative;">
+              <div id="live-hype-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #00e5ff, #ff3b30); transition: width 0.4s ease;"></div>
+            </div>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between;">
+              <span>0%</span>
+              <span style="color: #ff3b30; font-weight: 600;">Trigger: 65%</span>
+              <span>100%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity Log ticker -->
+        <div style="background: rgba(0,0,0,0.4); border-radius: 6px; padding: 10px 14px; font-family: monospace; font-size: 11px; color: #a0aec0; max-height: 80px; overflow-y: auto;" id="live-activity-log">
+          <div>[Live System] Ready. Stream activity will appear here in real time...</div>
+        </div>
+      </div>
+
+      <!-- Turbo Multiprocessing Live Dashboard -->
+      <div id="turbo-dashboard-panel" class="glass-panel" style="display: none; margin-bottom: 24px; padding: 20px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(25, 20, 15, 0.65); border-radius: var(--border-radius-md);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 9999px; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-bolt-lightning"></i> TURBO MULTIPROCESS ACTIVE
+            </span>
+            <h2 id="turbo-status-headline" style="font-size: 1.15rem; margin: 0; color: #fff; font-family: var(--font-display);">Extracting All Possible Viral Gaming Clips...</h2>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="font-family: var(--font-mono); font-size: 13px; color: #f59e0b; background: rgba(0,0,0,0.3); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.3);">
+              ⏱️ Elapsed: <span id="turbo-stopwatch">00:00</span> <span style="color: var(--text-muted); font-size: 11px;">/ &lt; 2 min</span>
+            </div>
+            <button id="btn-turbo-view-queue" class="btn-primary" style="display: none; background: var(--secondary-color); font-size: 12px; padding: 6px 14px;">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Open Ready to Push Queue (<span id="turbo-completed-count">0</span> Clips)
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Parallel Worker Cards Grid -->
+        <div id="turbo-workers-grid" class="turbo-workers-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 16px;">
+          <!-- Dynamically populated worker cards based on clip target -->
+          <div style="grid-column: 1 / -1; padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            <i class="fa-solid fa-circle-notch fa-spin" style="margin-right: 8px; color: #f59e0b;"></i> Initializing multi-clip extraction pipeline...
+          </div>
+        </div>
+
+        <!-- Rendered Results Grid (Appears on completion) -->
+        <div id="turbo-results-container" style="display: none; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <div style="font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+            <span id="turbo-results-title"><i class="fa-solid fa-check-double" style="color: #10b981;"></i> <span id="turbo-results-count">0</span> Ready-to-Push Vertical Clips:</span>
+          </div>
+          <div id="turbo-results-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;">
+            <!-- Rendered preview cards -->
+          </div>
+        </div>
+      </div>
+
       <div class="workspace-grid">
         
         <!-- Left Panel: Original Video Player / Status -->
@@ -135,7 +418,12 @@
         <!-- Right Panel: AI Extracted Clips / Results -->
         <div class="workspace-right">
           <div class="clips-card glass-panel">
-            <h2 class="panel-title"><i class="fa-solid fa-chart-line"></i> AI Viral Clips</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h2 class="panel-title" style="margin: 0;"><i class="fa-solid fa-chart-line"></i> AI Viral Clips</h2>
+              <button id="btn-turbo-batch-now" class="btn-primary" style="font-size: 11px; padding: 6px 12px; background: linear-gradient(135deg, #f59e0b, #ef4444); border: none; display: none;">
+                <i class="fa-solid fa-bolt-lightning"></i> Turbo Export All Clips (< 2m)
+              </button>
+            </div>
             <div id="clips-list" class="clips-list">
               <!-- Dynamically populated clip items -->
               <div class="clips-placeholder">
@@ -172,12 +460,52 @@
           <div class="styles-card glass-panel">
             <h2 class="panel-title"><i class="fa-solid fa-palette"></i> Caption Style & Layout</h2>
             
+            <!-- Interactive Live Subtitle Style Demo Stage -->
+            <div class="style-group" style="background: rgba(0,0,0,0.3); padding: 14px; border-radius: var(--border-radius-md); border: 1px solid var(--panel-border); margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label class="group-label" style="margin-bottom: 0; font-size: 12.5px;">
+                  <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--secondary-color);"></i> Live Subtitle Style Demo
+                </label>
+                <span id="demo-style-badge" style="font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 12px; background: rgba(0, 229, 255, 0.15); color: #00e5ff;">TikTok Yellow</span>
+              </div>
+              <div id="subtitle-demo-stage" class="subtitle-demo-stage">
+                <!-- Animated Subtitle Words -->
+                <div id="demo-karaoke-text" class="demo-karaoke-text">
+                  <span class="demo-word">VIRAL</span>
+                  <span class="demo-word active">CONTENT</span>
+                  <span class="demo-word">CREATOR</span>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span style="font-size: 11px; color: var(--text-muted);">Real-time word-by-word animated style preview</span>
+                <button type="button" id="btn-replay-demo" style="background: none; border: none; color: var(--secondary-color); font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                  <i class="fa-solid fa-rotate-right"></i> Replay
+                </button>
+              </div>
+            </div>
+
             <div class="style-group">
-              <label class="group-label">Subtitle Preset</label>
-              <div class="style-presets">
+              <label class="group-label">Trending Subtitle Presets</label>
+              <div class="style-presets" style="grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));">
                 <div class="style-preset-card active" data-style="tiktok">
                   <div class="preset-preview tiktok-preset">TikTok</div>
                   <span>TikTok Yellow</span>
+                </div>
+                <div class="style-preset-card" data-style="hormozi">
+                  <div class="preset-preview hormozi-preset">Hormozi</div>
+                  <span>Hormozi Lime</span>
+                </div>
+                <div class="style-preset-card" data-style="mrbeast">
+                  <div class="preset-preview mrbeast-preset">MrBeast</div>
+                  <span>MrBeast Hype</span>
+                </div>
+                <div class="style-preset-card" data-style="fire_glow">
+                  <div class="preset-preview fire-preset">Fire Glow</div>
+                  <span>Fire & Flame</span>
+                </div>
+                <div class="style-preset-card" data-style="highlighter">
+                  <div class="preset-preview highlighter-preset">Highlight</div>
+                  <span>Highlighter Pill</span>
                 </div>
                 <div class="style-preset-card" data-style="cyberpunk">
                   <div class="preset-preview cyberpunk-preset">Cyber</div>
@@ -198,6 +526,8 @@
                 <option value="bangers">Bangers (Comic/Action)</option>
                 <option value="fredoka_one">Fredoka One (Rounded)</option>
                 <option value="impact">Impact (Classic Meme)</option>
+                <option value="nirmala_ui">Nirmala UI (Hindi / Devanagari)</option>
+                <option value="segoe_ui">Segoe UI (Universal)</option>
                 <option value="arial">Arial (Simple)</option>
               </select>
             </div>
@@ -217,6 +547,20 @@
               </div>
             </div>
 
+            <div class="style-group">
+              <label class="group-label">AI Mirror Settings</label>
+              <div class="ai-filter-options" style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted);">
+                  <input type="checkbox" id="chk-ai-mirror" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--neon-cyan);">
+                  <span>AI Comic/Artistic Filter</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted);">
+                  <input type="checkbox" id="chk-hflip" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--neon-cyan);">
+                  <span>Horizontal Mirror (Flip)</span>
+                </label>
+              </div>
+            </div>
+
             <button id="btn-export-video" class="btn-primary btn-block">
               <i class="fa-solid fa-video-slash"></i> Burn Captions & Export
             </button>
@@ -227,7 +571,20 @@
         <div class="editor-right">
           <div class="transcript-card glass-panel">
             <h2 class="panel-title"><i class="fa-solid fa-keyboard"></i> Word-Level Subtitle Editor</h2>
-            <p class="transcript-help">Click a word to seek the player to its start time. Double-click a word to edit its spelling or adjust its timings.</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 24px 14px 24px; border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 10px;">
+              <p class="transcript-help" style="padding: 0; border: none; margin: 0;">Click word to seek. Double-click to edit text or timing.</p>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <select id="editor-lang-select" class="style-select" style="padding: 4px 8px; font-size: 12px; width: auto; height: 32px;">
+                  <option value="auto">🌐 Auto</option>
+                  <option value="hi">🇮🇳 Hindi</option>
+                  <option value="hinglish">🇮🇳 Hinglish</option>
+                  <option value="en">🇺🇸 English</option>
+                </select>
+                <button type="button" id="btn-retranscribe" class="btn-secondary" style="height: 32px; padding: 0 10px; font-size: 12px;" title="Re-transcribe clip in selected language">
+                  <i class="fa-solid fa-arrows-rotate"></i> Re-Transcribe
+                </button>
+              </div>
+            </div>
             
             <div id="transcript-timeline" class="transcript-timeline">
               <!-- Dynamically populated words -->
@@ -324,6 +681,17 @@
             </div>
             <div id="key-status" class="key-status">Checking API key...</div>
           </div>
+
+          <div class="form-row" style="margin-bottom: 15px;">
+            <label for="youtube-api-key-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+              YouTube Data API v3 Key <span style="font-weight: 400; color: var(--text-muted);">(Optional - yt-dlp fallback is automatic)</span>
+            </label>
+            <div class="input-group">
+              <i class="fa-brands fa-youtube input-icon" style="color: #ff3b30;"></i>
+              <input type="password" id="youtube-api-key-input" placeholder="Optional: AIzaSy... (Leave empty for free yt-dlp search)">
+            </div>
+            <div id="yt-key-status" class="key-status" style="font-size: 11px; margin-top: 4px; color: var(--text-muted);">Zero-config yt-dlp search active by default.</div>
+          </div>
           
           <div class="form-row" style="margin-bottom: 20px;">
             <label for="youtube-cookies-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: flex; justify-content: space-between;">
@@ -406,7 +774,31 @@
     </div>
   </div>
 
+  <!-- Ready to Push Staging Queue Modal -->
+  <div id="queue-modal" class="modal-overlay">
+    <div class="modal-card glass-panel" style="max-width: 960px; width: 95%;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h2 style="margin: 0;"><i class="fa-solid fa-bolt" style="color: #ffcc00;"></i> Ready to Push Queue</h2>
+          <span id="queue-modal-count" style="background: rgba(255,204,0,0.2); color: #ffcc00; font-size: 12px; font-weight: bold; border-radius: 12px; padding: 2px 8px;">0 Clips</span>
+        </div>
+        <button id="btn-close-queue" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+        <p class="modal-description" style="margin-bottom: 20px;">
+          Auto-clipped viral moments detected live from stream reactions and audio peaks. Each clip is rendered in 9:16 vertical format with creative animated captions, complete with viral titles and tags ready for YouTube Shorts, TikTok, and Reels.
+        </p>
+        <div id="queue-list" class="queue-list-container">
+          <div class="queue-empty" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+            <i class="fa-solid fa-clapperboard" style="font-size: 48px; margin-bottom: 15px; color: rgba(255,255,255,0.1);"></i>
+            <p>No clips in the Ready to Push queue yet. Start a live capture to automatically generate viral clips!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Custom script -->
-  <script src="/public/app.js?v=2.0.0"></script>
+  <script src="/public/app.js?v=2.1.0"></script>
 </body>
 </html>

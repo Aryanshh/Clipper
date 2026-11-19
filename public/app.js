@@ -7,9 +7,14 @@ const state = {
   selectedClip: null,
   captions: [],
   subtitlePreset: 'tiktok',
+  subtitleFont: 'the_bold_font',
   aspectRatio: 'crop',
   editingWordIndex: null,
-  editingSentenceIndex: null
+  editingSentenceIndex: null,
+  aiMirror: false,
+  hflip: false,
+  isTrimmedUpload: false,
+  transcriptionLanguage: 'auto'
 };
 
 // DOM Elements
@@ -27,6 +32,8 @@ const el = {
   formSettings: document.getElementById('form-settings'),
   geminiKeyInput: document.getElementById('gemini-key-input'),
   youtubeCookiesInput: document.getElementById('youtube-cookies-input'),
+  youtubeApiKeyInput: document.getElementById('youtube-api-key-input'),
+  ytKeyStatus: document.getElementById('yt-key-status'),
   keyStatus: document.getElementById('key-status'),
 
   // Import screen elements
@@ -34,9 +41,18 @@ const el = {
   tabContents: document.querySelectorAll('.tab-content'),
   formImportYt: document.getElementById('form-import-yt'),
   ytUrl: document.getElementById('yt-url'),
+  btnJumpLiveStreams: document.getElementById('btn-jump-live-streams'),
+  streamSearchInput: document.getElementById('stream-search-input'),
+  btnFetchStreams: document.getElementById('btn-fetch-streams'),
+  streamSearchResults: document.getElementById('stream-search-results'),
+  presetChips: document.querySelectorAll('.preset-chip'),
+  ytSearchSourceIndicator: document.getElementById('yt-search-source-indicator'),
   dropZone: document.getElementById('drop-zone'),
   localFile: document.getElementById('local-file'),
   selectedFileName: document.getElementById('selected-file-name'),
+  dropZoneTrimmed: document.getElementById('drop-zone-trimmed'),
+  trimmedFile: document.getElementById('trimmed-file'),
+  selectedTrimmedName: document.getElementById('selected-trimmed-name'),
 
   // Stepper
   stepImport: document.getElementById('step-import'),
@@ -86,7 +102,79 @@ const el = {
   historyList: document.getElementById('history-list'),
 
   // Autopilot
-  autopilotCheckbox: document.getElementById('autopilot-checkbox')
+  autopilotCheckbox: document.getElementById('autopilot-checkbox'),
+  chkAiMirror: document.getElementById('chk-ai-mirror'),
+  chkHflip: document.getElementById('chk-hflip'),
+
+  // Live Stream Elements
+  formImportLive: document.getElementById('form-import-live'),
+  liveUrl: document.getElementById('live-url'),
+  liveSensitivity: document.getElementById('live-sensitivity'),
+  liveStyle: document.getElementById('live-style'),
+  liveCropMode: document.getElementById('live-crop-mode'),
+  btnStartLive: document.getElementById('btn-start-live'),
+  liveStreamPanel: document.getElementById('live-stream-panel'),
+  liveStreamTitle: document.getElementById('live-stream-title'),
+  liveStreamUploader: document.getElementById('live-stream-uploader'),
+  btnLiveStop: document.getElementById('btn-live-stop'),
+  btnLiveTestTrigger: document.getElementById('btn-live-test-trigger'),
+  liveStatViewers: document.getElementById('live-stat-viewers'),
+  liveStatDuration: document.getElementById('live-stat-duration'),
+  liveStatChat: document.getElementById('live-stat-chat'),
+  liveChatStatus: document.getElementById('live-chat-status'),
+  liveStatAudio: document.getElementById('live-stat-audio'),
+  liveAudioStatus: document.getElementById('live-audio-status'),
+  liveStatHype: document.getElementById('live-stat-hype'),
+  liveHypeFill: document.getElementById('live-hype-fill'),
+  liveActivityLog: document.getElementById('live-activity-log'),
+
+  // Ready to Push Queue Modal
+  btnOpenQueue: document.getElementById('btn-open-queue'),
+  btnCloseQueue: document.getElementById('btn-close-queue'),
+  queueModal: document.getElementById('queue-modal'),
+  queueList: document.getElementById('queue-list'),
+
+  // Multilingual Transcription
+  transcriptionLang: document.getElementById('transcription-lang'),
+  editorLangSelect: document.getElementById('editor-lang-select'),
+  btnRetranscribe: document.getElementById('btn-retranscribe'),
+  queueBadge: document.getElementById('queue-badge'),
+  queueModalCount: document.getElementById('queue-modal-count'),
+
+  // Interactive Subtitle Demo
+  subtitleDemoStage: document.getElementById('subtitle-demo-stage'),
+  demoKaraokeText: document.getElementById('demo-karaoke-text'),
+  demoStyleBadge: document.getElementById('demo-style-badge'),
+  btnReplayDemo: document.getElementById('btn-replay-demo'),
+
+  // Turbo Multiprocessing Engine (Multi-Clip Gaming Extraction)
+  turboModeCheckbox: document.getElementById('turbo-mode-checkbox'),
+  turboClipCount: document.getElementById('turbo-clip-count'),
+  turboDashboardPanel: document.getElementById('turbo-dashboard-panel'),
+  turboStatusHeadline: document.getElementById('turbo-status-headline'),
+  turboStopwatch: document.getElementById('turbo-stopwatch'),
+  btnTurboViewQueue: document.getElementById('btn-turbo-view-queue'),
+  turboCompletedCount: document.getElementById('turbo-completed-count'),
+  turboWorkersGrid: document.getElementById('turbo-workers-grid'),
+  turboResultsContainer: document.getElementById('turbo-results-container'),
+  turboResultsCount: document.getElementById('turbo-results-count'),
+  turboResultsGrid: document.getElementById('turbo-results-grid'),
+  btnTurboBatchNow: document.getElementById('btn-turbo-batch-now')
+};
+
+let livePollingTimer = null;
+let demoAnimationTimer = null;
+let demoWordIndex = 0;
+const demoWords = ['VIRAL', 'CONTENT', 'CREATOR'];
+
+const styleDisplayNames = {
+  'tiktok': 'TikTok Yellow',
+  'hormozi': 'Alex Hormozi Lime',
+  'mrbeast': 'MrBeast Hype',
+  'fire_glow': 'Fire & Flame Glow',
+  'highlighter': 'Highlighter Pill',
+  'cyberpunk': 'Cyberpunk Neon',
+  'minimalist': 'Minimalist Clean'
 };
 
 // ----------------------------------------------------
@@ -95,6 +183,9 @@ const el = {
 document.addEventListener('DOMContentLoaded', () => {
   checkSettings();
   setupEventListeners();
+  checkLiveStatus();
+  loadQueueBadge();
+  startSubtitleDemoLoop();
 });
 
 async function checkSettings() {
@@ -116,6 +207,16 @@ async function checkSettings() {
       el.youtubeCookiesInput.value = data.cookiesContent;
     } else {
       el.youtubeCookiesInput.value = '';
+    }
+
+    if (el.ytKeyStatus) {
+      if (data.youtubeApiConfigured) {
+        el.ytKeyStatus.textContent = `YouTube Data API v3 configured: ${data.youtubeApiKeyMasked}`;
+        el.ytKeyStatus.style.color = '#10b981';
+      } else {
+        el.ytKeyStatus.textContent = 'Zero-config yt-dlp search active by default.';
+        el.ytKeyStatus.style.color = 'var(--text-muted)';
+      }
     }
   } catch (err) {
     console.error('Error checking settings:', err);
@@ -175,10 +276,35 @@ function setupEventListeners() {
     }
   });
 
+  // Import: Pre-Trimmed File upload select/drag
+  if (el.dropZoneTrimmed && el.trimmedFile) {
+    el.dropZoneTrimmed.addEventListener('click', () => el.trimmedFile.click());
+    el.trimmedFile.addEventListener('change', handleTrimmedFileSelect);
+    el.dropZoneTrimmed.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.dropZoneTrimmed.classList.add('dragover');
+    });
+    el.dropZoneTrimmed.addEventListener('dragleave', () => {
+      el.dropZoneTrimmed.classList.remove('dragover');
+    });
+    el.dropZoneTrimmed.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.dropZoneTrimmed.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        el.trimmedFile.files = e.dataTransfer.files;
+        handleTrimmedFileSelect();
+      }
+    });
+  }
+
   // Editor Navigation
   el.btnBackToClips.addEventListener('click', () => {
     el.clipPlayer.pause();
-    showSection(el.secWorkspace);
+    if (state.isTrimmedUpload) {
+      showSection(el.secImport);
+    } else {
+      showSection(el.secWorkspace);
+    }
   });
 
   // Subtitle preset selection
@@ -189,8 +315,15 @@ function setupEventListeners() {
       state.subtitlePreset = card.dataset.style;
       renderTranscriptTimeline(state.captions);
       updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
+      updateSubtitleDemoStage();
     });
   });
+
+  if (el.btnReplayDemo) {
+    el.btnReplayDemo.addEventListener('click', () => {
+      startSubtitleDemoLoop();
+    });
+  }
 
   // Aspect ratio crop toggle
   el.ratioBtns.forEach(btn => {
@@ -201,6 +334,18 @@ function setupEventListeners() {
       updateAspectRatioPreview();
     });
   });
+
+  // AI Mirror settings
+  if (el.chkAiMirror) {
+    el.chkAiMirror.addEventListener('change', (e) => {
+      state.aiMirror = e.target.checked;
+    });
+  }
+  if (el.chkHflip) {
+    el.chkHflip.addEventListener('change', (e) => {
+      state.hflip = e.target.checked;
+    });
+  }
 
   // Sliced Clip Player TimeUpdate (Subtitles sync highlight)
   el.clipPlayer.addEventListener('timeupdate', syncTimelineHighlight);
@@ -217,6 +362,87 @@ function setupEventListeners() {
   if (el.subtitleFontSelect) {
     el.subtitleFontSelect.addEventListener('change', () => {
       updateSubtitlePreviewOverlay(el.clipPlayer.currentTime);
+      updateSubtitleDemoStage();
+    });
+  }
+
+  // Multilingual Transcription Language Selection (Hindi & English)
+  if (el.transcriptionLang) {
+    el.transcriptionLang.addEventListener('change', (e) => {
+      state.transcriptionLanguage = e.target.value;
+      if (el.editorLangSelect) {
+        el.editorLangSelect.value = e.target.value;
+      }
+    });
+  }
+
+  if (el.editorLangSelect) {
+    el.editorLangSelect.addEventListener('change', (e) => {
+      state.transcriptionLanguage = e.target.value;
+      if (el.transcriptionLang) {
+        el.transcriptionLang.value = e.target.value;
+      }
+    });
+  }
+
+  // In-Editor Re-Transcribe in Selected Language
+  if (el.btnRetranscribe) {
+    el.btnRetranscribe.addEventListener('click', async () => {
+      const selectedLang = el.editorLangSelect ? el.editorLangSelect.value : (state.transcriptionLanguage || 'auto');
+      state.transcriptionLanguage = selectedLang;
+      if (el.transcriptionLang) el.transcriptionLang.value = selectedLang;
+
+      const clipAudioFilename = (state.selectedClip && state.selectedClip.clipAudioFilename)
+        ? state.selectedClip.clipAudioFilename
+        : (state.videoId ? `audio_${state.videoId}.mp3` : null);
+
+      if (!clipAudioFilename) {
+        alert('Clip audio is not available for re-transcription. Please select a clip first.');
+        return;
+      }
+
+      el.btnRetranscribe.disabled = true;
+      el.btnRetranscribe.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Transcribing...`;
+
+      el.transcriptTimeline.innerHTML = `
+        <div class="transcript-placeholder">
+          <div class="cyber-spinner"></div>
+          <p>Re-transcribing speech in ${selectedLang.toUpperCase()}...<br><span style="font-size:12px; color:var(--text-muted);">Powered by Gemini Multimodal API</span></p>
+        </div>
+      `;
+
+      try {
+        const res = await fetch('/api/captions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clipAudioFilename,
+            language: selectedLang
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Re-transcription failed.');
+        }
+
+        const data = await res.json();
+        state.captions = data.captions;
+        renderTranscriptTimeline(data.captions);
+
+        const hasDevanagari = (data.captions || []).some(c => /[\u0900-\u097F]/.test(c.word || ''));
+        if (hasDevanagari && el.subtitleFontSelect && (!state.subtitleFont || state.subtitleFont === 'the_bold_font')) {
+          el.subtitleFontSelect.value = 'nirmala_ui';
+          state.subtitleFont = 'nirmala_ui';
+          updateSubtitlePreviewOverlay();
+        }
+      } catch (err) {
+        alert('Re-transcription error: ' + err.message);
+        renderTranscriptTimeline(state.captions);
+      } finally {
+        el.btnRetranscribe.disabled = false;
+        el.btnRetranscribe.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Re-Transcribe`;
+      }
     });
   }
 
@@ -241,6 +467,97 @@ function setupEventListeners() {
     el.exportPlayer.pause();
     showSection(el.secEditor);
   });
+
+  // Live Stream Capture submit
+  if (el.formImportLive) {
+    el.formImportLive.addEventListener('submit', handleLiveCaptureStart);
+  }
+  if (el.btnLiveStop) {
+    el.btnLiveStop.addEventListener('click', handleLiveCaptureStop);
+  }
+  if (el.btnLiveTestTrigger) {
+    el.btnLiveTestTrigger.addEventListener('click', handleLiveTestTrigger);
+  }
+
+  // Ready to Push Queue Modal
+  if (el.btnOpenQueue) {
+    el.btnOpenQueue.addEventListener('click', () => {
+      loadQueue();
+      openModal(el.queueModal);
+    });
+  }
+  if (el.btnCloseQueue) {
+    el.btnCloseQueue.addEventListener('click', () => {
+      closeModal(el.queueModal);
+    });
+  }
+
+  // Live Gaming & GTA 6 Stream Radar listeners
+  if (el.presetChips) {
+    el.presetChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        el.presetChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const q = chip.dataset.query;
+        const isLive = chip.dataset.live === 'true';
+        if (el.streamSearchInput) {
+          el.streamSearchInput.value = q;
+        }
+        fetchLiveStreams(q, isLive);
+      });
+    });
+  }
+
+  if (el.btnFetchStreams) {
+    el.btnFetchStreams.addEventListener('click', () => {
+      const q = el.streamSearchInput ? el.streamSearchInput.value.trim() : 'GTA 6 live stream gaming';
+      fetchLiveStreams(q, true);
+    });
+  }
+
+  if (el.streamSearchInput) {
+    el.streamSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = el.streamSearchInput.value.trim() || 'GTA 6 live stream gaming';
+        fetchLiveStreams(q, true);
+      }
+    });
+  }
+
+  if (el.btnJumpLiveStreams) {
+    el.btnJumpLiveStreams.addEventListener('click', () => {
+      const liveTabBtn = document.querySelector('.tab-btn[data-tab="tab-livestream"]');
+      if (liveTabBtn) {
+        liveTabBtn.click();
+      }
+      const streamPanel = document.querySelector('.stream-discovery-panel');
+      if (streamPanel) {
+        streamPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (el.streamSearchResults && el.streamSearchResults.children.length <= 1) {
+        fetchLiveStreams('GTA 6 live stream gaming', true);
+      }
+    });
+  }
+
+  // Turbo 4x Multiprocess listeners
+  if (el.btnTurboViewQueue) {
+    el.btnTurboViewQueue.addEventListener('click', () => {
+      loadQueue();
+      openModal(el.queueModal);
+    });
+  }
+
+  if (el.btnTurboBatchNow) {
+    el.btnTurboBatchNow.addEventListener('click', () => {
+      if (!state.videoId) {
+        alert('Please import a video first.');
+        return;
+      }
+      startTurboWorkflow(state.videoId, state.transcriptionLanguage, state.clips);
+    });
+  }
 }
 
 // Helper to transition screens
@@ -264,6 +581,7 @@ async function handleSettingsSave(e) {
   e.preventDefault();
   const apiKey = el.geminiKeyInput.value.trim();
   const youtubeCookies = el.youtubeCookiesInput.value.trim();
+  const youtubeApiKey = el.youtubeApiKeyInput ? el.youtubeApiKeyInput.value.trim() : '';
   if (!apiKey) return;
 
   try {
@@ -271,7 +589,7 @@ async function handleSettingsSave(e) {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey, youtubeCookies })
+      body: JSON.stringify({ apiKey, youtubeCookies, youtubeApiKey })
     });
     const data = await res.json();
     if (data.success) {
@@ -307,7 +625,7 @@ async function handleYoutubeImport(e) {
   
   el.sourcePlayer.style.display = 'none';
   el.processingDetails.style.display = 'flex';
-  el.processingStatusText.innerHTML = `Downloading YouTube video...<br><span style="font-size:12px; color:var(--text-muted);">Running yt-dlp module on server</span>`;
+  el.processingStatusText.innerHTML = `Connecting &amp; downloading stream...<br><span style="font-size:12px; color:var(--text-muted);">High-speed extractor (720p HD)</span>`;
 
   try {
     const res = await fetch('/api/import', {
@@ -317,15 +635,19 @@ async function handleYoutubeImport(e) {
     });
     
     if (!res.ok) {
-      const errData = await res.json();
-      throw new Error(errData.error || 'Failed to download video.');
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Server returned ${res.status}: ${res.statusText}`);
     }
 
     const data = await res.json();
     handleImportSuccess(data);
 
   } catch (err) {
-    alert(`Error: ${err.message}`);
+    const isFetchErr = err.message && err.message.toLowerCase().includes('failed to fetch');
+    const msg = isFetchErr 
+      ? 'Connection timed out during stream download. Please retry with the URL or switch to Live Stream Capture.'
+      : err.message;
+    alert(`Import Notice: ${msg}`);
     showSection(el.secImport);
   }
 }
@@ -377,6 +699,7 @@ async function handleFileSelect() {
 
 // Common import successful callback
 function handleImportSuccess(data) {
+  state.isTrimmedUpload = false; // Reset to normal workflow
   state.videoId = data.videoId;
   state.videoUrl = data.videoUrl;
 
@@ -389,8 +712,13 @@ function handleImportSuccess(data) {
   el.sourcePlayer.src = data.videoUrl;
   el.sourcePlayer.load();
 
-  // Trigger Gemini Analysis
-  runGeminiAnalysis();
+  // If Turbo 4x Multiprocess is enabled, fan-out parallel pipeline immediately!
+  if (el.turboModeCheckbox && el.turboModeCheckbox.checked) {
+    startTurboWorkflow(data.videoId, state.transcriptionLanguage);
+  } else {
+    // Trigger standard Gemini Analysis
+    runGeminiAnalysis();
+  }
 }
 
 // Stepper visual states
@@ -414,7 +742,10 @@ async function runGeminiAnalysis() {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoId: state.videoId })
+      body: JSON.stringify({ 
+        videoId: state.videoId,
+        language: state.transcriptionLanguage
+      })
     });
 
     if (!res.ok) {
@@ -429,6 +760,9 @@ async function runGeminiAnalysis() {
       renderAutopilotConfigBoard(data.clips);
     } else {
       renderClips(data.clips);
+      if (el.btnTurboBatchNow) {
+        el.btnTurboBatchNow.style.display = 'inline-flex';
+      }
       setStepState('step-analyze', 'complete');
     }
   } catch (err) {
@@ -523,6 +857,7 @@ async function handleClipSelect(clip) {
 
     const dataCut = await resCut.json();
     state.selectedClip.clipFilename = dataCut.clipFilename;
+    state.selectedClip.clipAudioFilename = dataCut.clipAudioFilename;
 
     // Load sliced video clip
     el.clipPlayer.src = dataCut.clipUrl;
@@ -533,7 +868,7 @@ async function handleClipSelect(clip) {
     el.transcriptTimeline.innerHTML = `
       <div class="transcript-placeholder">
         <div class="cyber-spinner"></div>
-        <p>Transcribing audio track with word-level accuracy...<br><span style="font-size:12px; color:var(--text-muted);">Powered by Gemini Multimodal API</span></p>
+        <p>Transcribing audio track with word-level accuracy...<br><span style="font-size:12px; color:var(--text-muted);">Powered by Gemini Multimodal API (${(state.transcriptionLanguage || 'auto').toUpperCase()})</span></p>
       </div>
     `;
 
@@ -541,7 +876,8 @@ async function handleClipSelect(clip) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clipAudioFilename: dataCut.clipAudioFilename
+        clipAudioFilename: dataCut.clipAudioFilename,
+        language: state.transcriptionLanguage
       })
     });
 
@@ -553,6 +889,14 @@ async function handleClipSelect(clip) {
     const dataCaptions = await resCaptions.json();
     state.captions = dataCaptions.captions;
     renderTranscriptTimeline(dataCaptions.captions);
+
+    // If Devanagari Hindi characters are detected, default font to Nirmala UI for clean rendering
+    const hasDevanagari = (dataCaptions.captions || []).some(c => /[\u0900-\u097F]/.test(c.word || ''));
+    if (hasDevanagari && el.subtitleFontSelect && (!state.subtitleFont || state.subtitleFont === 'the_bold_font')) {
+      el.subtitleFontSelect.value = 'nirmala_ui';
+      state.subtitleFont = 'nirmala_ui';
+      updateSubtitlePreviewOverlay();
+    }
 
   } catch (err) {
     el.transcriptTimeline.innerHTML = `
@@ -758,7 +1102,9 @@ async function handleExport() {
         style: state.subtitlePreset,
         crop: state.aspectRatio === 'crop',
         cropMode: state.aspectRatio,
-        font: fontSelect ? fontSelect.value : 'arial'
+        font: fontSelect ? fontSelect.value : 'arial',
+        aiMirror: state.aiMirror,
+        hflip: state.hflip
       })
     });
 
@@ -874,6 +1220,8 @@ function updateSubtitlePreviewOverlay(time) {
     'bangers': "'Bangers', sans-serif",
     'fredoka_one': "'Fredoka', sans-serif",
     'impact': "Impact, sans-serif",
+    'nirmala_ui': "'Nirmala UI', 'Segoe UI', sans-serif",
+    'segoe_ui': "'Segoe UI', sans-serif",
     'arial': "Arial, sans-serif"
   };
   overlay.style.fontFamily = fontMapping[selectedFontValue] || 'Arial, sans-serif';
@@ -915,6 +1263,72 @@ function updateSubtitlePreviewOverlay(time) {
     }
     return w.word;
   }).join(' ');
+}
+
+// ----------------------------------------------------
+// Interactive Subtitle Live Demo Functions
+// ----------------------------------------------------
+function updateSubtitleDemoStage() {
+  if (!el.subtitleDemoStage || !el.demoKaraokeText) return;
+
+  const currentStyle = state.subtitlePreset || 'tiktok';
+
+  // Update badge label
+  if (el.demoStyleBadge) {
+    el.demoStyleBadge.textContent = styleDisplayNames[currentStyle] || currentStyle;
+  }
+
+  // Apply selected custom font
+  const fontSelect = el.subtitleFontSelect;
+  const selectedFontValue = fontSelect ? fontSelect.value : 'arial';
+  const fontMapping = {
+    'the_bold_font': "'The Bold Font', Impact, sans-serif",
+    'montserrat_black': "'Montserrat', sans-serif",
+    'bangers': "'Bangers', sans-serif",
+    'fredoka_one': "'Fredoka', sans-serif",
+    'impact': "Impact, sans-serif",
+    'nirmala_ui': "'Nirmala UI', 'Segoe UI', sans-serif",
+    'segoe_ui': "'Segoe UI', sans-serif",
+    'arial': "Arial, sans-serif"
+  };
+  el.demoKaraokeText.style.fontFamily = fontMapping[selectedFontValue] || 'Arial, sans-serif';
+
+  renderDemoWords(demoWordIndex);
+}
+
+function renderDemoWords(activeIndex) {
+  if (!el.demoKaraokeText) return;
+  const currentStyle = state.subtitlePreset || 'tiktok';
+
+  el.demoKaraokeText.className = `demo-karaoke-text subtitle-preview-overlay preset-${currentStyle}`;
+  el.demoKaraokeText.style.display = 'flex';
+  el.demoKaraokeText.style.position = 'relative';
+  el.demoKaraokeText.style.top = 'auto';
+  el.demoKaraokeText.style.left = 'auto';
+  el.demoKaraokeText.style.transform = 'none';
+
+  el.demoKaraokeText.innerHTML = demoWords.map((word, idx) => {
+    const isActive = idx === activeIndex;
+    if (isActive) {
+      return `<span class="demo-word active-word" style="display:inline-block;">${word}</span>`;
+    }
+    return `<span class="demo-word" style="opacity: 0.85;">${word}</span>`;
+  }).join(' ');
+}
+
+function startSubtitleDemoLoop() {
+  if (demoAnimationTimer) clearInterval(demoAnimationTimer);
+  demoWordIndex = 0;
+  updateSubtitleDemoStage();
+
+  demoAnimationTimer = setInterval(() => {
+    demoWordIndex = (demoWordIndex + 1) % (demoWords.length + 1);
+    if (demoWordIndex === demoWords.length) {
+      renderDemoWords(-1);
+    } else {
+      renderDemoWords(demoWordIndex);
+    }
+  }, 650);
 }
 
 // Copy to clipboard helper for virality metadata
@@ -1256,7 +1670,8 @@ async function startAutopilotExecution(queuedClips) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clipAudioFilename: cutData.clipAudioFilename
+          clipAudioFilename: cutData.clipAudioFilename,
+          language: state.transcriptionLanguage
         })
       });
       if (!captionsRes.ok) throw new Error('Transcription failed.');
@@ -1406,3 +1821,819 @@ window.previewAutopilotExport = function(exportUrl, exportFilename, title, descr
   document.getElementById('virality-description').value = description || '';
   document.getElementById('virality-hashtags').value = hashtags || '';
 };
+
+// ----------------------------------------------------
+// Pre-Trimmed Clip Processing Flow
+// ----------------------------------------------------
+
+async function handleTrimmedFileSelect() {
+  if (!state.apiKeyConfigured) {
+    alert('Please configure your Gemini API Key first.');
+    openModal(el.settingsModal);
+    return;
+  }
+
+  const file = el.trimmedFile.files[0];
+  if (!file) return;
+
+  if (el.selectedTrimmedName) {
+    el.selectedTrimmedName.textContent = `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+  }
+
+  state.isTrimmedUpload = true; // Mark as trimmed upload
+
+  showSection(el.secWorkspace);
+  setStepState('step-import', 'active');
+  setStepState('step-analyze', 'inactive');
+  setStepState('step-refine', 'inactive');
+
+  el.sourcePlayer.style.display = 'none';
+  el.processingDetails.style.display = 'flex';
+  el.processingStatusText.textContent = 'Uploading pre-trimmed video...';
+
+  const formData = new FormData();
+  formData.append('videoFile', file);
+
+  try {
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to upload video.');
+    }
+
+    const data = await res.json();
+    
+    state.videoId = data.videoId;
+    state.videoUrl = data.videoUrl;
+
+    setStepState('step-import', 'complete');
+    setStepState('step-analyze', 'active');
+
+    // Display original video in player
+    el.processingDetails.style.display = 'none';
+    el.sourcePlayer.style.display = 'block';
+    el.sourcePlayer.src = data.videoUrl;
+    el.sourcePlayer.load();
+
+    // Trigger Trimmed Analysis
+    runTrimmedAnalysis();
+
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+    showSection(el.secImport);
+  }
+}
+
+async function runTrimmedAnalysis() {
+  el.clipsList.innerHTML = `
+    <div class="clips-placeholder">
+      <div class="cyber-spinner"></div>
+      <p style="margin-top:10px;">Gemini is transcribing and generating social metadata...<br><span style="font-size:12px; color:var(--text-muted);">Processing pre-trimmed clip directly</span></p>
+    </div>
+  `;
+
+  try {
+    const res = await fetch('/api/analyze-trimmed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        videoId: state.videoId,
+        language: state.transcriptionLanguage
+      })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Analysis failed.');
+    }
+
+    const data = await res.json();
+
+    // The whole video file is our clip.
+    // The filename of the clip on the server is just the video filename!
+    // Get filename from the videoUrl (e.g. /downloads/upload_xxxx.mp4 -> upload_xxxx.mp4)
+    const clipFilename = state.videoUrl.split('/').pop();
+    
+    state.selectedClip = {
+      title: data.title,
+      description: data.description,
+      hashtags: data.hashtags,
+      clipFilename: clipFilename
+    };
+    state.captions = data.captions;
+
+    // Transition to editor
+    showSection(el.secEditor);
+    setStepState('step-analyze', 'complete');
+    setStepState('step-refine', 'active');
+
+    // Load video clip into editor player
+    el.clipPlayer.src = state.videoUrl;
+    el.clipPlayer.load();
+    updateAspectRatioPreview();
+
+    // Render subtitles timeline
+    renderTranscriptTimeline(data.captions);
+
+  } catch (err) {
+    el.clipsList.innerHTML = `
+      <div class="clips-placeholder" style="color:var(--accent-color);">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <p>Analysis failed: ${err.message}</p>
+      </div>
+    `;
+  }
+}
+
+// ----------------------------------------------------
+// Live Stream Capture & Ready-to-Push Queue Functions
+// ----------------------------------------------------
+
+async function handleLiveCaptureStart(e) {
+  e.preventDefault();
+  const url = el.liveUrl.value.trim();
+  if (!url) return;
+
+  const sensitivity = parseInt(el.liveSensitivity.value, 10) || 65;
+  const style = el.liveStyle.value || 'tiktok';
+  const cropMode = el.liveCropMode.value || 'crop';
+
+  const originalBtnText = el.btnStartLive.innerHTML;
+  el.btnStartLive.disabled = true;
+  el.btnStartLive.innerHTML = `<div class="cyber-spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></div> Connecting Live Stream...`;
+
+  try {
+    const res = await fetch('/api/live/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, sensitivity, style, cropMode })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to start live capture.');
+    }
+
+    // Switch to Workspace section and show Live Stream Monitor Panel
+    showSection(el.secWorkspace);
+    if (el.processingDetails) el.processingDetails.style.display = 'none';
+    if (el.liveStreamPanel) el.liveStreamPanel.style.display = 'block';
+
+    updateLiveUI(data.status);
+    startLivePolling();
+  } catch (err) {
+    alert(`Live Stream Error: ${err.message}`);
+  } finally {
+    el.btnStartLive.disabled = false;
+    el.btnStartLive.innerHTML = originalBtnText;
+  }
+}
+
+async function handleLiveCaptureStop() {
+  if (!confirm('Are you sure you want to stop live stream capture?')) return;
+
+  try {
+    await fetch('/api/live/stop', { method: 'POST' });
+    stopLivePolling();
+    if (el.liveStreamPanel) el.liveStreamPanel.style.display = 'none';
+    showSection(el.secImport);
+    alert('Live stream capture stopped.');
+  } catch (err) {
+    console.error('Error stopping stream:', err);
+  }
+}
+
+async function handleLiveTestTrigger() {
+  const originalText = el.btnLiveTestTrigger.innerHTML;
+  el.btnLiveTestTrigger.disabled = true;
+  el.btnLiveTestTrigger.innerHTML = `<div class="cyber-spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Generating Clip...`;
+
+  try {
+    const res = await fetch('/api/live/trigger-test', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to trigger test clip.');
+
+    loadQueueBadge();
+    loadQueue();
+    openModal(el.queueModal);
+  } catch (err) {
+    alert(`Trigger Clip Error: ${err.message}`);
+  } finally {
+    el.btnLiveTestTrigger.disabled = false;
+    el.btnLiveTestTrigger.innerHTML = originalText;
+  }
+}
+
+function startLivePolling() {
+  if (livePollingTimer) clearInterval(livePollingTimer);
+  livePollingTimer = setInterval(async () => {
+    await checkLiveStatus();
+  }, 2500);
+}
+
+function stopLivePolling() {
+  if (livePollingTimer) {
+    clearInterval(livePollingTimer);
+    livePollingTimer = null;
+  }
+}
+
+async function checkLiveStatus() {
+  try {
+    const res = await fetch('/api/live/status');
+    const data = await res.json();
+    if (data.success && data.status) {
+      if (data.status.isCapturing) {
+        if (el.liveStreamPanel) el.liveStreamPanel.style.display = 'block';
+        updateLiveUI(data.status);
+        if (!livePollingTimer) startLivePolling();
+      } else {
+        if (el.liveStreamPanel && el.secWorkspace && el.secWorkspace.classList.contains('active')) {
+          el.liveStreamPanel.style.display = 'none';
+        }
+      }
+    }
+    loadQueueBadge();
+  } catch (err) {
+    console.warn('Live status check notice:', err.message);
+  }
+}
+
+function updateLiveUI(status) {
+  if (!status) return;
+
+  if (el.liveStreamTitle) el.liveStreamTitle.textContent = status.streamTitle || 'Live Stream';
+  if (el.liveStreamUploader) el.liveStreamUploader.textContent = status.uploader ? `(${status.uploader})` : '';
+  
+  if (el.liveStatViewers) {
+    el.liveStatViewers.textContent = Number(status.viewerCount || 0).toLocaleString();
+  }
+
+  if (el.liveStatDuration) {
+    const s = status.elapsedSeconds || 0;
+    const h = String(Math.floor(s / 3600)).padStart(2, '0');
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const sec = String(s % 60).padStart(2, '0');
+    el.liveStatDuration.textContent = `Duration: ${h}:${m}:${sec}`;
+  }
+
+  if (el.liveStatChat) {
+    el.liveStatChat.textContent = status.chatVelocity || 0;
+  }
+  if (el.liveChatStatus) {
+    const vel = status.chatVelocity || 0;
+    if (vel >= 50) {
+      el.liveChatStatus.innerHTML = `<span style="color:#ff3b30;font-weight:bold;">🔥 Reaction Spike!</span>`;
+    } else if (vel >= 30) {
+      el.liveChatStatus.innerHTML = `<span style="color:#00e5ff;">Active Chatting</span>`;
+    } else {
+      el.liveChatStatus.textContent = 'Normal Chat Traffic';
+    }
+  }
+
+  if (el.liveStatAudio) {
+    el.liveStatAudio.textContent = status.audioVolumeDb || -25;
+  }
+  if (el.liveAudioStatus) {
+    const db = status.audioVolumeDb || -25;
+    if (db >= -8) {
+      el.liveAudioStatus.innerHTML = `<span style="color:#ff3b30;font-weight:bold;">🔊 Hype / Screaming!</span>`;
+    } else if (db >= -15) {
+      el.liveAudioStatus.innerHTML = `<span style="color:#00e676;">Lively Commentary</span>`;
+    } else {
+      el.liveAudioStatus.textContent = 'Speech Energy Normal';
+    }
+  }
+
+  if (el.liveStatHype) {
+    const score = status.hypeScore || 0;
+    const sens = status.sensitivity || 65;
+    el.liveStatHype.textContent = `${score} / ${sens}`;
+    if (el.liveHypeFill) {
+      el.liveHypeFill.style.width = `${Math.min(100, score)}%`;
+      if (score >= sens) {
+        el.liveHypeFill.style.background = 'linear-gradient(90deg, #ff9500, #ff3b30)';
+      } else {
+        el.liveHypeFill.style.background = 'linear-gradient(90deg, #00e5ff, #00e676)';
+      }
+    }
+  }
+
+  if (el.liveActivityLog && status.recentEvents && status.recentEvents.length > 0) {
+    el.liveActivityLog.innerHTML = status.recentEvents.map(e => `<div>${e}</div>`).join('');
+    el.liveActivityLog.scrollTop = el.liveActivityLog.scrollHeight;
+  }
+}
+
+async function loadQueueBadge() {
+  try {
+    const res = await fetch('/api/live/queue');
+    const data = await res.json();
+    if (data.success && data.queue) {
+      const count = data.queue.length;
+      if (el.queueBadge) {
+        if (count > 0) {
+          el.queueBadge.textContent = count;
+          el.queueBadge.style.display = 'inline-block';
+        } else {
+          el.queueBadge.style.display = 'none';
+        }
+      }
+      if (el.queueModalCount) {
+        el.queueModalCount.textContent = `${count} Clips`;
+      }
+    }
+  } catch (e) {}
+}
+
+async function loadQueue() {
+  if (!el.queueList) return;
+
+  try {
+    el.queueList.innerHTML = `<div style="text-align:center;padding:30px;"><div class="cyber-spinner"></div><p style="margin-top:10px;color:var(--text-muted);">Loading Ready to Push Queue...</p></div>`;
+
+    const res = await fetch('/api/live/queue');
+    const data = await res.json();
+
+    if (!data.success || !data.queue || data.queue.length === 0) {
+      el.queueList.innerHTML = `
+        <div class="queue-empty" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+          <i class="fa-solid fa-clapperboard" style="font-size: 48px; margin-bottom: 15px; color: rgba(255,255,255,0.1);"></i>
+          <p>No clips in the Ready to Push queue yet. Start a live capture to automatically generate viral clips!</p>
+        </div>`;
+      return;
+    }
+
+    el.queueList.innerHTML = data.queue.map(item => `
+      <div class="queue-item-card glass-panel" data-id="${item.id}" style="margin-bottom: 20px; padding: 18px; border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); background: rgba(0,0,0,0.35);">
+        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
+          <!-- 9:16 Video Preview -->
+          <div style="position: relative; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 9/16; max-height: 350px;">
+            <video src="${item.exportUrl}" controls preload="metadata" style="width: 100%; height: 100%; object-fit: contain;"></video>
+            <div style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: #ff3b30; border: 1px solid rgba(255,59,48,0.5);">
+              🔥 ${item.viralityScore}% Viral
+            </div>
+          </div>
+
+          <!-- Metadata & Actions -->
+          <div style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-clock"></i> ${new Date(item.createdAt).toLocaleTimeString()} &bull; ${item.triggerReason || 'Live Spike'}
+                </span>
+                <span class="queue-status-tag" style="background: ${item.status === 'pushed' ? 'rgba(16,185,129,0.2)' : 'rgba(255,204,0,0.2)'}; color: ${item.status === 'pushed' ? '#10b981' : '#ffcc00'}; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px;">
+                  ${item.status === 'pushed' ? '✓ PUSHED' : '⚡ READY TO PUSH'}
+                </span>
+              </div>
+
+              <!-- Title Field -->
+              <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Viral Title (Shorts / TikTok)</label>
+                <input type="text" class="queue-title-input" value="${escapeHtml(item.title)}" style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); color: #fff; font-family: inherit; font-size: 13.5px; font-weight: 600;">
+              </div>
+
+              <!-- Description & Tags -->
+              <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Description & Hashtags</label>
+                <textarea rows="3" class="queue-desc-input" style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); color: #fff; font-family: inherit; font-size: 12px; resize: vertical;">${escapeHtml(item.description || '')}\n\n${(item.hashtags || []).join(' ')}</textarea>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; border-top: 1px solid var(--panel-border); padding-top: 12px;">
+              <a href="/api/download/${encodeURIComponent(item.exportFilename)}" download class="btn-primary" style="padding: 6px 14px; font-size: 12.5px; text-decoration: none;">
+                <i class="fa-solid fa-download"></i> Download 9:16 MP4
+              </a>
+              <button class="btn-secondary btn-copy-queue-meta" onclick="copyQueueMetadata('${item.id}')" style="padding: 6px 14px; font-size: 12.5px;">
+                <i class="fa-regular fa-copy"></i> Copy Title & Tags
+              </button>
+              <button class="btn-secondary" onclick="toggleQueueStatus('${item.id}')" style="padding: 6px 14px; font-size: 12.5px;">
+                ${item.status === 'pushed' ? '<i class="fa-solid fa-rotate-left"></i> Mark as Ready' : '<i class="fa-solid fa-check"></i> Mark as Pushed'}
+              </button>
+              <button class="btn-icon" onclick="deleteQueueItem('${item.id}')" title="Delete Clip" style="margin-left: auto; color: #ef4444; width: 32px; height: 32px;">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Attach blur save listeners on inputs
+    document.querySelectorAll('.queue-item-card').forEach(card => {
+      const id = card.dataset.id;
+      const titleInput = card.querySelector('.queue-title-input');
+      const descInput = card.querySelector('.queue-desc-input');
+
+      const saveUpdates = async () => {
+        const title = titleInput.value.trim();
+        const descText = descInput.value.trim();
+        await fetch(`/api/live/queue/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description: descText })
+        });
+      };
+
+      titleInput.addEventListener('change', saveUpdates);
+      descInput.addEventListener('change', saveUpdates);
+    });
+
+  } catch (err) {
+    el.queueList.innerHTML = `<div style="color:#ef4444;padding:20px;">Failed to load queue: ${err.message}</div>`;
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function copyQueueMetadata(id) {
+  const card = document.querySelector(`.queue-item-card[data-id="${id}"]`);
+  if (!card) return;
+  const title = card.querySelector('.queue-title-input').value.trim();
+  const desc = card.querySelector('.queue-desc-input').value.trim();
+  const textToCopy = `${title}\n\n${desc}`;
+
+  try {
+    await navigator.clipboard.writeText(textToCopy);
+    alert('Copied Title & Description to clipboard!');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = textToCopy;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('Copied Title & Description to clipboard!');
+  }
+}
+
+async function toggleQueueStatus(id) {
+  try {
+    const card = document.querySelector(`.queue-item-card[data-id="${id}"]`);
+    const isPushed = card.innerText.includes('PUSHED');
+    const newStatus = isPushed ? 'ready' : 'pushed';
+
+    await fetch(`/api/live/queue/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    loadQueue();
+  } catch (err) {
+    console.error('Error toggling status:', err);
+  }
+}
+
+async function deleteQueueItem(id) {
+  if (!confirm('Are you sure you want to delete this clip from the Ready to Push queue?')) return;
+  try {
+    await fetch(`/api/live/queue/${id}`, { method: 'DELETE' });
+    loadQueue();
+    loadQueueBadge();
+  } catch (err) {
+    console.error('Error deleting clip:', err);
+  }
+}
+
+// ----------------------------------------------------
+// Live Gaming & GTA 6 Stream Discovery Radar
+// ----------------------------------------------------
+async function fetchLiveStreams(customQuery, isLive = true) {
+  const query = customQuery || (el.streamSearchInput ? el.streamSearchInput.value.trim() : 'GTA 6 live stream gaming');
+  if (!query) return;
+
+  if (el.streamSearchResults) {
+    el.streamSearchResults.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 36px 20px; color: var(--text-secondary);">
+        <i class="fa-solid fa-spinner fa-spin" style="font-size: 26px; color: var(--accent-pink); margin-bottom: 12px; display: block;"></i>
+        Scanning live GTA 6 &amp; gaming broadcasts for "<strong>${escapeHtml(query)}</strong>"...
+      </div>
+    `;
+  }
+
+  try {
+    const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&live=${isLive ? 'true' : 'false'}&maxResults=8`);
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to search streams.');
+    }
+
+    if (el.ytSearchSourceIndicator) {
+      if (data.source === 'youtube_data_api_v3') {
+        el.ytSearchSourceIndicator.innerHTML = `<i class="fa-brands fa-youtube" style="color: #ff3b30; margin-right: 4px;"></i> YouTube API v3 Active`;
+      } else {
+        el.ytSearchSourceIndicator.innerHTML = `<i class="fa-solid fa-bolt" style="color: #10b981; margin-right: 4px;"></i> Free yt-dlp Engine`;
+      }
+    }
+
+    renderStreamResults(data.videos || []);
+  } catch (err) {
+    console.error('Error fetching live streams:', err);
+    if (el.streamSearchResults) {
+      el.streamSearchResults.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 24px; color: #ef4444;">
+          <i class="fa-solid fa-triangle-exclamation" style="font-size: 24px; margin-bottom: 8px; display: block;"></i>
+          Failed to fetch YouTube streams: ${escapeHtml(err.message)}
+        </div>
+      `;
+    }
+  }
+}
+
+function renderStreamResults(videos) {
+  if (!el.streamSearchResults) return;
+  if (!videos || videos.length === 0) {
+    el.streamSearchResults.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 32px 20px; color: var(--text-muted);">
+        <i class="fa-solid fa-satellite-dish" style="font-size: 24px; margin-bottom: 8px; opacity: 0.5; display: block;"></i>
+        No matching streams or gaming videos found right now. Try another query or preset above.
+      </div>
+    `;
+    return;
+  }
+
+  el.streamSearchResults.innerHTML = videos.map(v => {
+    const isLive = v.isLive === true || v.liveStatus === 'live' || v.liveStatus === 'is_live';
+    const tagHtml = isLive 
+      ? `<span class="stream-live-tag"><span class="pulse-dot" style="width: 6px; height: 6px; background-color: #fff;"></span> LIVE</span>`
+      : (v.duration ? `<span class="stream-duration-tag">${escapeHtml(v.duration)}</span>` : '');
+
+    const safeUrl = escapeHtml(v.url || `https://www.youtube.com/watch?v=${v.id}`);
+
+    return `
+      <div class="stream-card" data-video-id="${escapeHtml(v.id)}" data-url="${safeUrl}">
+        <div class="stream-thumb-wrap">
+          <img class="stream-thumb-img" src="${escapeHtml(v.thumbnail)}" alt="${escapeHtml(v.title)}" loading="lazy" onerror="this.src='https://i.ytimg.com/vi/${escapeHtml(v.id)}/hqdefault.jpg'">
+          ${tagHtml}
+        </div>
+        <div class="stream-card-body">
+          <div class="stream-card-title" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</div>
+          <div class="stream-card-channel">
+            <i class="fa-solid fa-gamepad" style="color: var(--accent-pink);"></i>
+            <span>${escapeHtml(v.channel)}</span>
+          </div>
+          <div class="stream-card-actions">
+            <button type="button" class="stream-btn-action stream-btn-capture" onclick="selectStreamForLiveCapture('${safeUrl}')">
+              <i class="fa-solid fa-satellite-dish"></i> Capture Stream
+            </button>
+            <button type="button" class="stream-btn-action stream-btn-clip" onclick="selectStreamForClipImport('${safeUrl}')">
+              <i class="fa-solid fa-scissors"></i> Clip
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.selectStreamForLiveCapture = function(url) {
+  const liveTabBtn = document.querySelector('.tab-btn[data-tab="tab-livestream"]');
+  if (liveTabBtn) {
+    liveTabBtn.click();
+  }
+  if (el.liveUrl) {
+    el.liveUrl.value = url;
+    el.liveUrl.focus();
+    el.liveUrl.style.outline = '2px solid var(--accent-pink)';
+    setTimeout(() => { if (el.liveUrl) el.liveUrl.style.outline = 'none'; }, 1800);
+    if (el.btnStartLive) {
+      el.btnStartLive.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+};
+
+window.selectStreamForClipImport = function(url) {
+  if (el.ytUrl) {
+    el.ytUrl.value = url;
+  }
+  const ytTabBtn = document.querySelector('.tab-btn[data-tab="tab-youtube"]');
+  if (ytTabBtn) {
+    ytTabBtn.click();
+    if (el.ytUrl) {
+      el.ytUrl.focus();
+      el.ytUrl.style.outline = '2px solid var(--accent-pink)';
+      setTimeout(() => { if (el.ytUrl) el.ytUrl.style.outline = 'none'; }, 1800);
+    }
+  }
+};
+
+// ----------------------------------------------------
+// Turbo Multiprocessing Engine (Multi-Clip Gaming Extraction)
+// ----------------------------------------------------
+let turboPollTimer = null;
+let turboStopwatchInterval = null;
+
+const TURBO_STYLE_ACCENTS = {
+  hormozi: { color: '#a3e635', label: 'Alex Hormozi' },
+  mrbeast: { color: '#fbbf24', label: 'MrBeast Hype' },
+  fire_glow: { color: '#f97316', label: 'Fire Glow' },
+  cyberpunk: { color: '#a855f7', label: 'Cyberpunk' },
+  highlighter: { color: '#38bdf8', label: 'Highlighter' },
+  tiktok: { color: '#ec4899', label: 'TikTok Clean' },
+  minimalist: { color: '#e2e8f0', label: 'Minimalist' }
+};
+
+function renderTurboWorkersGrid(workers) {
+  if (!el.turboWorkersGrid || !Array.isArray(workers)) return;
+  el.turboWorkersGrid.innerHTML = workers.map((w, idx) => {
+    const styleInfo = TURBO_STYLE_ACCENTS[w.style] || { color: '#a855f7', label: w.style || `Style ${idx + 1}` };
+    return `
+      <div class="turbo-worker-card" id="turbo-worker-${idx}" style="background: rgba(0,0,0,0.35); padding: 14px; border-radius: 8px; border: 1px solid var(--panel-border);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 11px; font-weight: 700; color: ${styleInfo.color}; text-transform: uppercase;">Worker ${idx + 1} • ${escapeHtml(styleInfo.label)}</span>
+          <span class="turbo-worker-badge" id="turbo-worker-badge-${idx}" style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">QUEUED</span>
+        </div>
+        <div class="turbo-worker-title" id="turbo-worker-title-${idx}" style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(w.name || `Clip ${idx + 1}`)}</div>
+        <div class="progress-bar-bg" style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+          <div class="progress-bar-fill" id="turbo-worker-progress-${idx}" style="width: ${w.progress || 10}%; height: 100%; background: ${styleInfo.color}; transition: width 0.3s ease;"></div>
+        </div>
+        <div id="turbo-worker-desc-${idx}" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Spawning worker process...</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function startTurboWorkflow(videoId, language = 'auto', manualClips = null) {
+  const lang = language || state.transcriptionLanguage || 'auto';
+  const maxClips = el.turboClipCount ? el.turboClipCount.value : 'auto';
+
+  // Display Turbo Dashboard Panel
+  if (el.turboDashboardPanel) {
+    el.turboDashboardPanel.style.display = 'block';
+    el.turboDashboardPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Reset UI states
+  if (el.btnTurboViewQueue) el.btnTurboViewQueue.style.display = 'none';
+  if (el.turboResultsContainer) el.turboResultsContainer.style.display = 'none';
+  if (el.turboStatusHeadline) {
+    el.turboStatusHeadline.textContent = maxClips === 'auto'
+      ? 'Extracting All Possible Gaming Viral Clips...'
+      : `Extracting ${maxClips} Gaming Viral Clips in Parallel...`;
+  }
+
+  // Initial placeholder in workers grid
+  if (el.turboWorkersGrid) {
+    el.turboWorkersGrid.innerHTML = `
+      <div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+        <i class="fa-solid fa-circle-notch fa-spin" style="margin-right: 8px; color: #f59e0b;"></i> Initializing multi-clip extraction pipeline...
+      </div>
+    `;
+  }
+
+  // Start stopwatch
+  const startTime = Date.now();
+  if (turboStopwatchInterval) clearInterval(turboStopwatchInterval);
+  turboStopwatchInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    if (el.turboStopwatch) el.turboStopwatch.textContent = `${m}:${s}`;
+  }, 1000);
+
+  try {
+    const startRes = await fetch('/api/turbo/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoId,
+        language: lang,
+        styleMode: 'all',
+        cropMode: 'crop',
+        maxClips,
+        manualClips
+      })
+    });
+
+    const startData = await startRes.json();
+    if (!startData.success) {
+      throw new Error(startData.error || 'Failed to start turbo batch.');
+    }
+
+    const batchId = startData.batchId;
+
+    // Poll status every 1200ms
+    if (turboPollTimer) clearInterval(turboPollTimer);
+    turboPollTimer = setInterval(async () => {
+      try {
+        const statusRes = await fetch(`/api/turbo/status/${batchId}`);
+        const statusData = await statusRes.json();
+        if (!statusData.success || !statusData.status) return;
+
+        const batch = statusData.status;
+
+        // Render dynamic worker cards if not already populated or if count changed
+        if (Array.isArray(batch.workers) && batch.workers.length > 0) {
+          if (!document.getElementById(`turbo-worker-${batch.workers.length - 1}`)) {
+            renderTurboWorkersGrid(batch.workers);
+          }
+
+          // Update worker cards
+          batch.workers.forEach((w, idx) => {
+            const badge = document.getElementById(`turbo-worker-badge-${idx}`);
+            const title = document.getElementById(`turbo-worker-title-${idx}`);
+            const prog = document.getElementById(`turbo-worker-progress-${idx}`);
+            const desc = document.getElementById(`turbo-worker-desc-${idx}`);
+
+            if (badge) {
+              badge.textContent = w.stage.toUpperCase();
+              badge.style.color = w.stage === 'done' ? '#10b981' : (w.stage === 'rendering' ? '#f59e0b' : '#38bdf8');
+            }
+            if (title && w.name) title.textContent = w.name;
+            if (prog) prog.style.width = `${w.progress}%`;
+            if (desc) {
+              if (w.stage === 'cutting') desc.textContent = 'Ultra-fast lossless stream slice...';
+              else if (w.stage === 'transcribing') desc.textContent = 'Transcribing words with Gemini AI...';
+              else if (w.stage === 'styling') desc.textContent = `Applying ${w.style.toUpperCase()} styling...`;
+              else if (w.stage === 'rendering') desc.textContent = 'Multi-threaded CPU encoding & 9:16 crop...';
+              else if (w.stage === 'done') desc.textContent = '✅ Finished & Ready to Push!';
+            }
+          });
+        }
+
+        // Check if finished
+        if (batch.status === 'completed') {
+          clearInterval(turboPollTimer);
+          clearInterval(turboStopwatchInterval);
+
+          const totalSec = batch.elapsedSeconds;
+          const clipCount = (batch.clips || []).length;
+          if (el.turboStatusHeadline) {
+            el.turboStatusHeadline.innerHTML = `🎉 ${clipCount} Clips Generated, Transcribed, Styled &amp; Rendered in <span style="color:#10b981; font-weight:700;">${totalSec}s</span>!`;
+          }
+
+          if (el.btnTurboViewQueue) {
+            el.btnTurboViewQueue.style.display = 'inline-flex';
+            if (el.turboCompletedCount) el.turboCompletedCount.textContent = `${clipCount}`;
+          }
+          if (el.turboResultsCount) el.turboResultsCount.textContent = `${clipCount}`;
+
+          // Render finished clips cards
+          renderTurboResults(batch.clips || []);
+          loadQueueBadge();
+          setStepState('step-import', 'complete');
+          setStepState('step-analyze', 'complete');
+          setStepState('step-refine', 'complete');
+        } else if (batch.status === 'failed') {
+          clearInterval(turboPollTimer);
+          clearInterval(turboStopwatchInterval);
+          if (el.turboStatusHeadline) {
+            el.turboStatusHeadline.innerHTML = `<span style="color:#ef4444;">Pipeline error: ${escapeHtml(batch.error || 'Failed')}</span>`;
+          }
+        }
+      } catch (pollErr) {
+        console.error('Polling error:', pollErr);
+      }
+    }, 1200);
+
+  } catch (err) {
+    clearInterval(turboPollTimer);
+    clearInterval(turboStopwatchInterval);
+    alert(`Turbo pipeline failed: ${err.message}`);
+  }
+}
+
+function renderTurboResults(clips) {
+  if (!el.turboResultsContainer || !el.turboResultsGrid) return;
+  el.turboResultsContainer.style.display = 'block';
+
+  el.turboResultsGrid.innerHTML = clips.map((clip, idx) => {
+    return `
+      <div class="turbo-result-card" style="background: var(--surface-alt); border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); overflow: hidden; display: flex; flex-direction: column;">
+        <div style="position: relative; width: 100%; padding-top: 177.7%; background: #000; overflow: hidden;">
+          <video src="${escapeHtml(clip.exportUrl)}" controls playsinline style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover;"></video>
+          <span style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
+            ${escapeHtml(clip.style)}
+          </span>
+          <span style="position: absolute; top: 8px; right: 8px; background: rgba(16, 185, 129, 0.85); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;">
+            ${clip.viralityScore}% VIRAL
+          </span>
+        </div>
+        <div style="padding: 10px 12px; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
+          <div style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(clip.title)}">
+            ${escapeHtml(clip.title)}
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 8px;">
+            <a href="${escapeHtml(clip.exportUrl)}" download="${escapeHtml(clip.exportFilename)}" class="btn-primary" style="flex: 1; font-size: 11px; padding: 6px; text-align: center; text-decoration: none; justify-content: center; display: inline-flex; align-items: center; gap: 4px;">
+              <i class="fa-solid fa-download"></i> Download
+            </a>
+            <button type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 10px;" onclick="copyQueueMetadata('${escapeHtml(clip.id)}')">
+              <i class="fa-solid fa-copy"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+
