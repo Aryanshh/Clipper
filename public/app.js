@@ -14,7 +14,13 @@ const state = {
   aiMirror: false,
   hflip: false,
   isTrimmedUpload: false,
-  transcriptionLanguage: 'auto'
+  transcriptionLanguage: 'auto',
+  youtubeConnected: false,
+  youtubeChannelTitle: '',
+  youtubeChannelAvatar: '',
+  youtubePrivacy: 'public',
+  autoUploadYoutube: localStorage.getItem('clipper_auto_upload_yt') === 'true',
+  currentExport: null
 };
 
 // DOM Elements
@@ -159,7 +165,21 @@ const el = {
   turboResultsContainer: document.getElementById('turbo-results-container'),
   turboResultsCount: document.getElementById('turbo-results-count'),
   turboResultsGrid: document.getElementById('turbo-results-grid'),
-  btnTurboBatchNow: document.getElementById('btn-turbo-batch-now')
+  btnTurboBatchNow: document.getElementById('btn-turbo-batch-now'),
+
+  // YouTube Shorts Auto-Upload & OAuth
+  btnUploadYoutubeResult: document.getElementById('btn-upload-youtube-result'),
+  ytResultUploadStatus: document.getElementById('yt-result-upload-status'),
+  ytClientIdInput: document.getElementById('yt-client-id-input'),
+  ytClientSecretInput: document.getElementById('yt-client-secret-input'),
+  ytPrivacySelect: document.getElementById('yt-privacy-select'),
+  btnConnectYtChannel: document.getElementById('btn-connect-yt-channel'),
+  ytChannelBadge: document.getElementById('yt-channel-badge'),
+  ytChannelInfo: document.getElementById('yt-channel-info'),
+  ytChannelName: document.getElementById('yt-channel-name'),
+  ytChannelAvatar: document.getElementById('yt-channel-avatar'),
+  btnDisconnectYt: document.getElementById('btn-disconnect-yt'),
+  chkAutoUploadYoutube: document.getElementById('chk-auto-upload-youtube')
 };
 
 let livePollingTimer = null;
@@ -182,11 +202,76 @@ const styleDisplayNames = {
 // ----------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
   checkSettings();
+  loadYoutubeStatus();
   setupEventListeners();
   checkLiveStatus();
   loadQueueBadge();
   startSubtitleDemoLoop();
+  handleUrlAuthFeedback();
 });
+
+function handleUrlAuthFeedback() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('yt_connected')) {
+    showBypassNoticeToast('🎉 YouTube Channel connected successfully! Direct Shorts upload is active.');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else if (urlParams.has('yt_error')) {
+    alert('YouTube Connection Notice: ' + decodeURIComponent(urlParams.get('yt_error')));
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}
+
+async function loadYoutubeStatus() {
+  try {
+    const res = await fetch('/api/youtube/status');
+    const data = await res.json();
+    if (!data.success) return;
+
+    state.youtubeConnected = data.isConnected;
+    state.youtubeChannelTitle = data.channelTitle;
+    state.youtubeChannelAvatar = data.channelAvatar;
+    state.youtubePrivacy = data.privacyStatus || 'public';
+
+    if (el.ytPrivacySelect) el.ytPrivacySelect.value = state.youtubePrivacy;
+
+    if (el.chkAutoUploadYoutube) {
+      el.chkAutoUploadYoutube.checked = state.autoUploadYoutube;
+    }
+
+    if (el.ytChannelBadge) {
+      if (data.isConnected) {
+        el.ytChannelBadge.textContent = '✓ Connected';
+        el.ytChannelBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        el.ytChannelBadge.style.color = '#10b981';
+      } else {
+        el.ytChannelBadge.textContent = data.hasCredentials ? 'Credentials Set' : 'Not Connected';
+        el.ytChannelBadge.style.background = 'rgba(255, 255, 255, 0.1)';
+        el.ytChannelBadge.style.color = 'var(--text-muted)';
+      }
+    }
+
+    if (el.ytChannelInfo) {
+      if (data.isConnected) {
+        el.ytChannelInfo.style.display = 'flex';
+        if (el.ytChannelName) el.ytChannelName.textContent = data.channelTitle;
+        if (el.ytChannelAvatar) {
+          if (data.channelAvatar) {
+            el.ytChannelAvatar.src = data.channelAvatar;
+            el.ytChannelAvatar.style.display = 'block';
+          } else {
+            el.ytChannelAvatar.style.display = 'none';
+          }
+        }
+        if (el.btnConnectYtChannel) el.btnConnectYtChannel.style.display = 'none';
+      } else {
+        el.ytChannelInfo.style.display = 'none';
+        if (el.btnConnectYtChannel) el.btnConnectYtChannel.style.display = 'inline-flex';
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load YouTube status:', err.message);
+  }
+}
 
 async function checkSettings() {
   try {
@@ -243,6 +328,24 @@ function setupEventListeners() {
     closeModal(el.settingsModal);
   });
   el.formSettings.addEventListener('submit', handleSettingsSave);
+
+  // YouTube OAuth & Upload handlers
+  if (el.btnConnectYtChannel) {
+    el.btnConnectYtChannel.addEventListener('click', connectYoutubeChannel);
+  }
+  if (el.btnDisconnectYt) {
+    el.btnDisconnectYt.addEventListener('click', disconnectYoutubeChannel);
+  }
+  if (el.btnUploadYoutubeResult) {
+    el.btnUploadYoutubeResult.addEventListener('click', uploadExportResultToYoutube);
+  }
+  if (el.chkAutoUploadYoutube) {
+    el.chkAutoUploadYoutube.addEventListener('change', (e) => {
+      state.autoUploadYoutube = e.target.checked;
+      localStorage.setItem('clipper_auto_upload_yt', e.target.checked ? 'true' : 'false');
+      showBypassNoticeToast(e.target.checked ? '⚡ Auto-Upload to YouTube Shorts enabled!' : 'Auto-Upload to YouTube Shorts disabled.');
+    });
+  }
 
   // Tab switching
   el.tabButtons.forEach(btn => {
@@ -594,8 +697,22 @@ async function handleSettingsSave(e) {
     const data = await res.json();
     if (data.success) {
       state.apiKeyConfigured = true;
+
+      // Save YouTube OAuth settings if provided
+      const ytClientId = el.ytClientIdInput ? el.ytClientIdInput.value.trim() : '';
+      const ytClientSecret = el.ytClientSecretInput ? el.ytClientSecretInput.value.trim() : '';
+      const ytPrivacy = el.ytPrivacySelect ? el.ytPrivacySelect.value : 'public';
+      if (ytClientId || ytClientSecret) {
+        await fetch('/api/youtube/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: ytClientId, clientSecret: ytClientSecret, privacyStatus: ytPrivacy })
+        }).catch(console.warn);
+      }
+
       closeModal(el.settingsModal);
       checkSettings();
+      loadYoutubeStatus();
     } else {
       el.keyStatus.textContent = 'Error saving settings.';
       el.keyStatus.style.color = '#ef4444';
@@ -605,6 +722,189 @@ async function handleSettingsSave(e) {
     el.keyStatus.style.color = '#ef4444';
   }
 }
+
+// YouTube OAuth Connect
+async function connectYoutubeChannel() {
+  const clientId = el.ytClientIdInput ? el.ytClientIdInput.value.trim() : '';
+  const clientSecret = el.ytClientSecretInput ? el.ytClientSecretInput.value.trim() : '';
+  const privacyStatus = el.ytPrivacySelect ? el.ytPrivacySelect.value : 'public';
+
+  if (!clientId || !clientSecret) {
+    alert('Please enter your Google OAuth Client ID and Client Secret in the fields above first.');
+    if (el.ytClientIdInput) el.ytClientIdInput.focus();
+    return;
+  }
+
+  try {
+    // 1. Save credentials to server first
+    await fetch('/api/youtube/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, clientSecret, privacyStatus })
+    });
+
+    // 2. Request authorization URL
+    const res = await fetch('/api/youtube/auth-url');
+    const data = await res.json();
+    if (!data.success || !data.authUrl) {
+      throw new Error(data.error || 'Failed to generate YouTube authorization URL');
+    }
+
+    // 3. Redirect to Google Consent Screen
+    window.location.href = data.authUrl;
+  } catch (err) {
+    alert('Error connecting YouTube channel: ' + err.message);
+  }
+}
+
+// YouTube Disconnect
+async function disconnectYoutubeChannel() {
+  if (!confirm('Are you sure you want to disconnect your YouTube channel?')) return;
+  try {
+    const res = await fetch('/api/youtube/disconnect', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showBypassNoticeToast('YouTube channel disconnected.');
+      loadYoutubeStatus();
+    }
+  } catch (err) {
+    alert('Error disconnecting: ' + err.message);
+  }
+}
+
+// Upload current exported result to YouTube Shorts
+async function uploadExportResultToYoutube() {
+  if (!state.currentExport || !state.currentExport.exportFilename) {
+    alert('No exported video is currently loaded.');
+    return;
+  }
+
+  if (!state.youtubeConnected) {
+    alert('Please connect your YouTube channel in Settings first to enable 1-Click Upload.');
+    openModal(el.settingsModal);
+    return;
+  }
+
+  const btn = el.btnUploadYoutubeResult;
+  const statusDiv = el.ytResultUploadStatus;
+  const originalText = btn.innerHTML;
+
+  btn.disabled = true;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading to Shorts...`;
+  statusDiv.style.display = 'block';
+  statusDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+  statusDiv.style.color = '#fff';
+  statusDiv.innerHTML = `<i class="fa-solid fa-cloud-arrow-up" style="color:#ef4444; margin-right:6px;"></i> Streaming video directly to YouTube Data API...`;
+
+  const title = document.getElementById('virality-title').value.trim() || 'Epic Gaming Clip';
+  const description = document.getElementById('virality-description').value.trim();
+  const hashtags = document.getElementById('virality-hashtags').value.trim();
+
+  try {
+    const res = await fetch('/api/youtube/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        exportFilename: state.currentExport.exportFilename,
+        title,
+        description,
+        hashtags,
+        privacyStatus: state.youtubePrivacy || 'public'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Upload failed');
+    }
+
+    btn.innerHTML = `<i class="fa-solid fa-check"></i> Published on Shorts!`;
+    btn.style.background = '#10b981';
+    statusDiv.style.background = 'rgba(16, 185, 129, 0.15)';
+    statusDiv.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    statusDiv.innerHTML = `
+      <div style="font-weight: 700; color: #10b981; margin-bottom: 4px;">🎉 Video is Live on YouTube Shorts!</div>
+      <a href="${data.youtubeUrl}" target="_blank" style="color: #38bdf8; font-weight: 600; text-decoration: underline; font-size: 13.5px;">
+        <i class="fa-brands fa-youtube" style="color:#ef4444;"></i> Open Shorts: ${data.youtubeUrl} &rarr;
+      </a>
+    `;
+    showBypassNoticeToast('🚀 Clip published to YouTube Shorts successfully!');
+  } catch (err) {
+    console.error('YouTube upload failed:', err);
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    statusDiv.style.background = 'rgba(239, 68, 68, 0.2)';
+    statusDiv.innerHTML = `<span style="color:#ef4444;">Upload error: ${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// 1-Click Upload directly from Staging Queue Card
+window.uploadQueueItemToYoutube = async function(id, btn) {
+  if (!state.youtubeConnected) {
+    alert('Please connect your YouTube channel in Settings first to enable 1-Click Upload.');
+    openModal(el.settingsModal);
+    return;
+  }
+
+  const card = btn.closest('.queue-item-card');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading...`;
+
+  const titleInput = card ? card.querySelector('.queue-title-input') : null;
+  const descInput = card ? card.querySelector('.queue-desc-input') : null;
+  const title = titleInput ? titleInput.value.trim() : '';
+  const description = descInput ? descInput.value.trim() : '';
+
+  try {
+    // Fetch queue item metadata
+    const queueRes = await fetch('/api/live/queue');
+    const queueData = await queueRes.json();
+    const item = (queueData.queue || []).find(q => q.id === id);
+
+    if (!item) throw new Error('Queue item not found.');
+
+    const res = await fetch('/api/youtube/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        exportFilename: item.exportFilename,
+        title: title || item.title,
+        description: description || item.description,
+        hashtags: item.hashtags,
+        privacyStatus: state.youtubePrivacy || 'public'
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Upload failed');
+    }
+
+    btn.outerHTML = `
+      <a href="${data.youtubeUrl}" target="_blank" class="btn-primary" style="padding: 6px 14px; font-size: 12.5px; border:none; text-decoration:none; background: #10b981; display:inline-flex; align-items:center; gap:6px;">
+        <i class="fa-brands fa-youtube"></i> View on Shorts
+      </a>
+    `;
+
+    if (card) {
+      const tag = card.querySelector('.queue-status-tag');
+      if (tag) {
+        tag.textContent = '✓ PUBLISHED';
+        tag.style.background = 'rgba(16,185,129,0.2)';
+        tag.style.color = '#10b981';
+      }
+    }
+
+    showBypassNoticeToast('🚀 Clip published to YouTube Shorts!');
+  } catch (err) {
+    console.error('Queue upload error:', err);
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+    alert('YouTube Upload Notice: ' + err.message);
+  }
+};
 
 // YouTube import API trigger
 async function handleYoutubeImport(e) {
@@ -1199,6 +1499,7 @@ async function handleExport() {
     }
 
     const data = await res.json();
+    state.currentExport = data;
     
     // Load exported video in Result Screen
     showSection(el.secExportResult);
@@ -1218,10 +1519,24 @@ async function handleExport() {
       downloadVideo(`/api/download/${data.exportFilename}`, data.exportFilename, el.btnDownloadExport);
     };
 
+    // Reset YouTube upload button & status
+    if (el.ytResultUploadStatus) el.ytResultUploadStatus.style.display = 'none';
+    if (el.btnUploadYoutubeResult) {
+      el.btnUploadYoutubeResult.disabled = false;
+      el.btnUploadYoutubeResult.innerHTML = `<i class="fa-brands fa-youtube"></i> Upload to YouTube Shorts`;
+      el.btnUploadYoutubeResult.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+    }
+
     // Populate virality optimizer fields
     document.getElementById('virality-title').value = state.selectedClip.title || '';
     document.getElementById('virality-description').value = state.selectedClip.description || '';
     document.getElementById('virality-hashtags').value = (state.selectedClip.hashtags || []).join(' ');
+
+    // Autopilot check: If Auto-Upload to Shorts is enabled and YouTube is connected, publish immediately!
+    if (state.autoUploadYoutube && state.youtubeConnected) {
+      console.log('[Autopilot] Auto-Upload to YouTube Shorts triggered...');
+      uploadExportResultToYoutube();
+    }
 
   } catch (err) {
     alert(`Export failed: ${err.message}`);
@@ -2273,8 +2588,8 @@ async function loadQueue() {
                 <span style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
                   <i class="fa-solid fa-clock"></i> ${new Date(item.createdAt).toLocaleTimeString()} &bull; ${item.triggerReason || 'Live Spike'}
                 </span>
-                <span class="queue-status-tag" style="background: ${item.status === 'pushed' ? 'rgba(16,185,129,0.2)' : 'rgba(255,204,0,0.2)'}; color: ${item.status === 'pushed' ? '#10b981' : '#ffcc00'}; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px;">
-                  ${item.status === 'pushed' ? '✓ PUSHED' : '⚡ READY TO PUSH'}
+                <span class="queue-status-tag" style="background: ${item.youtubeUrl || item.status === 'pushed' ? 'rgba(16,185,129,0.2)' : 'rgba(255,204,0,0.2)'}; color: ${item.youtubeUrl || item.status === 'pushed' ? '#10b981' : '#ffcc00'}; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px;">
+                  ${item.youtubeUrl ? '✓ LIVE ON SHORTS' : (item.status === 'pushed' ? '✓ PUSHED' : '⚡ READY TO PUSH')}
                 </span>
               </div>
 
@@ -2296,6 +2611,15 @@ async function loadQueue() {
               <button type="button" onclick="downloadVideo('/api/download/${encodeURIComponent(item.exportFilename)}', '${item.exportFilename}', this)" class="btn-primary" style="padding: 6px 14px; font-size: 12.5px; border:none; cursor:pointer;">
                 <i class="fa-solid fa-download"></i> Download 9:16 MP4
               </button>
+              ${item.youtubeUrl ? `
+                <a href="${item.youtubeUrl}" target="_blank" class="btn-primary" style="padding: 6px 14px; font-size: 12.5px; border:none; text-decoration:none; background: #10b981; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fa-brands fa-youtube"></i> View on Shorts
+                </a>
+              ` : `
+                <button type="button" onclick="uploadQueueItemToYoutube('${item.id}', this)" class="btn-primary" style="padding: 6px 14px; font-size: 12.5px; border:none; cursor:pointer; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                  <i class="fa-brands fa-youtube"></i> Upload to Shorts
+                </button>
+              `}
               <button class="btn-secondary btn-copy-queue-meta" onclick="copyQueueMetadata('${item.id}')" style="padding: 6px 14px; font-size: 12.5px;">
                 <i class="fa-regular fa-copy"></i> Copy Title & Tags
               </button>
@@ -2748,14 +3072,51 @@ function renderTurboResults(clips) {
             <a href="${escapeHtml(clip.exportUrl)}" download="${escapeHtml(clip.exportFilename)}" class="btn-primary" style="flex: 1; font-size: 11px; padding: 6px; text-align: center; text-decoration: none; justify-content: center; display: inline-flex; align-items: center; gap: 4px;">
               <i class="fa-solid fa-download"></i> Download
             </a>
+            ${clip.youtubeUrl ? `
+              <a href="${clip.youtubeUrl}" target="_blank" class="btn-primary" style="font-size: 11px; padding: 6px 10px; background: #10b981; text-decoration:none; display:inline-flex; align-items:center;" title="View on YouTube Shorts">
+                <i class="fa-brands fa-youtube"></i>
+              </a>
+            ` : `
+              <button type="button" class="btn-primary" style="font-size: 11px; padding: 6px 10px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; cursor: pointer;" onclick="uploadQueueItemToYoutube('${escapeHtml(clip.id)}', this)" title="Upload to YouTube Shorts">
+                <i class="fa-brands fa-youtube"></i>
+              </button>
+            `}
             <button type="button" class="btn-secondary" style="font-size: 11px; padding: 6px 10px;" onclick="copyQueueMetadata('${escapeHtml(clip.id)}')">
-              <i class="fa-solid fa-copy"></i>
+              <i class="fa-regular fa-copy"></i>
             </button>
           </div>
         </div>
       </div>
     `;
   }).join('');
+
+  // Autopilot Hook: If Auto-Upload to Shorts is enabled, automatically upload all clips
+  if (state.autoUploadYoutube && state.youtubeConnected) {
+    console.log('[Autopilot] Automatically publishing Turbo clips to YouTube Shorts...');
+    clips.forEach(clip => {
+      if (!clip.youtubeUrl) {
+        fetch('/api/youtube/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: clip.id,
+            exportFilename: clip.exportFilename,
+            title: clip.title,
+            description: clip.description,
+            hashtags: clip.hashtags,
+            privacyStatus: state.youtubePrivacy || 'public'
+          })
+        }).then(r => r.json()).then(res => {
+          if (res && res.success) {
+            clip.youtubeUrl = res.youtubeUrl;
+            showBypassNoticeToast(`🚀 Auto-Uploaded "${clip.title.slice(0, 25)}..." to YouTube Shorts!`);
+          }
+        }).catch(err => {
+          console.warn('[Autopilot] YouTube auto-upload notice:', err.message);
+        });
+      }
+    });
+  }
 }
 
 
