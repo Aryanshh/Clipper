@@ -62,13 +62,10 @@ if (process.env.YOUTUBE_COOKIES) {
   }
 }
 
-// Automatically update yt-dlp to the latest version on startup
-console.log('Checking for yt-dlp updates...');
-exec('yt-dlp -U', (err, stdout, stderr) => {
-  if (err) {
-    console.error('Failed to update yt-dlp:', err.message);
-  } else {
-    console.log('yt-dlp update check:', stdout.trim() || stderr.trim() || 'Already up to date');
+// Check yt-dlp version on startup
+exec('yt-dlp --version', (err, stdout) => {
+  if (!err) {
+    console.log(`yt-dlp active version: ${stdout.trim()}`);
   }
 });
 

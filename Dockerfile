@@ -8,8 +8,10 @@ FROM node:20-slim
 # - fontconfig, fonts-dejavu, fonts-indic: required for subtitle/caption burn-in and multilingual Hindi/Indian support
 RUN apt-get update && apt-get install -y \
     python3 \
+    python3-pip \
     ffmpeg \
     curl \
+    ca-certificates \
     fontconfig \
     fonts-dejavu \
     fonts-indic \
