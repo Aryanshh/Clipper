@@ -431,9 +431,12 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
 
       console.log(`Downloading video from URL: ${url}`);
       
-      // 1. Fast probe duration and live status to avoid multi-gigabyte stalls
-      let isLongVideo = false;
-      let isLive = false;
+      // 1. Check if URL explicitly indicates live stream
+      const isKnownLiveUrl = url.includes('/live/') || url.includes('/live') || url.includes('live_stream');
+      let isLive = isKnownLiveUrl;
+      let dur = 0;
+
+      // Fast metadata probe with safe 15s timeout
       try {
         const probeProc = spawn('yt-dlp', [
           '--no-check-certificate',
@@ -444,143 +447,97 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
           url
         ], { env: process.env, cwd: __dirname });
         let probeOut = '';
+        let probeFinished = false;
         probeProc.stdout.on('data', d => probeOut += d.toString());
         await new Promise(r => {
-          probeProc.on('close', r);
-          setTimeout(r, 6000); // 6s timeout max for fast probe
+          probeProc.on('close', () => { probeFinished = true; r(); });
+          setTimeout(() => {
+            if (!probeFinished) {
+              try { probeProc.kill(); } catch (e) {}
+              r();
+            }
+          }, 15000);
         });
         const parts = probeOut.trim().split('|');
-        const dur = parseFloat(parts[0]) || 0;
-        isLive = parts[1] === 'True' || parts[1] === 'true';
-        if (dur > 900) {
-          isLongVideo = true;
-          console.log(`[Import] Video duration is ${dur}s. Enabling intelligent stream sectioning (first 15m) for ultra-fast download.`);
+        const rawDur = (parts[0] || '').trim();
+        const rawLive = (parts[1] || '').trim();
+        dur = parseFloat(rawDur) || 0;
+        if (rawLive === 'True' || rawLive === 'true' || rawDur === 'NA') {
+          isLive = true;
         }
       } catch (probeErr) {
         console.warn('[Import] Fast probe notice:', probeErr.message);
       }
 
-      // 2. High-speed download: active live stream vs long VOD vs standard video
-      if (isLive) {
-        console.log(`[Import] Video is an ACTIVE LIVE stream! Capturing 180s live buffer via direct HLS stream...`);
-        let liveHlsUrl = null;
-        try {
-          const gProc = spawn('yt-dlp', [
-            '--no-check-certificate',
-            '--ffmpeg-location', safeFfmpegLocation,
-            '--extractor-args', 'youtube:player_client=android,web',
-            '-g',
-            '-f', 'best[height<=720]/18/best',
-            url
-          ], { env: process.env, cwd: __dirname });
-          let gOut = '';
-          gProc.stdout.on('data', d => gOut += d.toString());
-          await new Promise(r => gProc.on('close', r));
-          liveHlsUrl = gOut.trim().split('\n')[0];
-        } catch (e) {
-          console.warn('[Import] Could not resolve direct HLS URL:', e.message);
-        }
+      // 2. High-speed bounded download
+      // If live: download a 30-second live buffer (*0-30) so it completes in ~20-25s
+      // If standard/VOD: download bounded section (*0-600, first 10 mins) so it completes in ~5-15s
+      await new Promise((resolve, reject) => {
+        const args = [
+          '--no-check-certificate',
+          '--no-playlist',
+          '--ffmpeg-location', safeFfmpegLocation,
+          '--extractor-args', 'youtube:player_client=android,web',
+          '--remux-video', 'mp4',
+          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          '--referer', 'https://www.youtube.com/'
+        ];
 
-        if (liveHlsUrl) {
-          console.log(`[Import] Recording 180s of live stream with FFmpeg to ${relativeVideoPath}...`);
-          await new Promise((resolve, reject) => {
-            const ffProc = spawn(safeFfmpegLocation, [
-              '-y',
-              '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              '-i', liveHlsUrl,
-              '-t', '180',
-              '-c', 'copy',
-              relativeVideoPath
-            ], { env: process.env, cwd: __dirname });
-            
-            let stderr = '';
-            ffProc.stderr.on('data', d => stderr += d.toString());
-            ffProc.on('close', code => {
-              const found = [
-                videoPath,
-                path.resolve(__dirname, relativeVideoPath),
-                path.join(__dirname, 'downloads', `${videoId}.mp4`)
-              ].find(f => fs.existsSync(f) && fs.statSync(f).size > 10000);
-              
-              if (code === 0 && found) {
-                videoPath = found;
-                resolve();
-              } else {
-                reject(new Error(`FFmpeg live capture exited with code ${code}. Error: ${stderr.slice(-250)}`));
-              }
-            });
-          });
+        if (isLive) {
+          console.log(`[Import] Video is an ACTIVE LIVE stream! Downloading 30s buffer with --download-sections *0-30...`);
+          args.push('-f', 'best[height<=720]/18/best');
+          args.push('--download-sections', '*0-30');
         } else {
-          // Fallback to yt-dlp with --no-live-from-start
-          await new Promise((resolve, reject) => {
-            const proc = spawn('yt-dlp', [
-              '--no-check-certificate',
-              '--no-playlist',
-              '--ffmpeg-location', safeFfmpegLocation,
-              '--extractor-args', 'youtube:player_client=android,web',
-              '-f', 'best[height<=720]/18/best',
-              '--no-live-from-start',
-              '-o', relativeVideoPath,
-              url
-            ], { env: process.env, cwd: __dirname });
-            proc.on('close', code => {
-              if (code === 0 && fs.existsSync(videoPath)) resolve();
-              else reject(new Error(`yt-dlp live download failed with code ${code}`));
-            });
-          });
+          console.log(`[Import] Video is a standard/VOD video. Downloading bounded stream with --download-sections *0-600...`);
+          args.push('-f', 'best[height<=720]/18/bestvideo[height<=720]+bestaudio/best');
+          args.push('--download-sections', '*0-600');
         }
-      } else {
-        await new Promise((resolve, reject) => {
-          const args = [
-            '--no-check-certificate',
-            '--no-playlist',
-            '--ffmpeg-location', safeFfmpegLocation,
-            '--extractor-args', 'youtube:player_client=android,web',
-            '-f', 'best[height<=720]/18/bestvideo[height<=720]+bestaudio/best',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            '--referer', 'https://www.youtube.com/'
-          ];
 
-          // For massive streams or long VODs (> 15 mins), download first 15 mins to avoid 20+ GB transfer
-          if (isLongVideo) {
-            args.push('--download-sections', '*0-900');
-          }
+        const localCookiesPath = path.join(__dirname, 'cookies.txt');
+        if (fs.existsSync(localCookiesPath)) {
+          args.unshift('--cookies', localCookiesPath);
+        }
 
-          const localCookiesPath = path.join(__dirname, 'cookies.txt');
-          if (fs.existsSync(localCookiesPath)) {
-            args.unshift('--cookies', localCookiesPath);
-          }
+        args.push('-o', relativeVideoPath);
+        args.push(url);
 
-          // Use relative path for -o to avoid Windows percent sign / junction issues
-          args.push('-o', relativeVideoPath);
-          args.push(url);
-
-          console.log(`Running yt-dlp ${args.join(' ')}`);
-          const proc = spawn('yt-dlp', args, { env: process.env, cwd: __dirname });
-          
-          let stderr = '';
-          proc.stderr.on('data', (data) => {
-            stderr += data.toString();
-          });
-
-          proc.on('close', (code) => {
-            const found = [
-              videoPath,
-              path.resolve(__dirname, relativeVideoPath),
-              path.join(__dirname, 'downloads', `${videoId}.mkv`),
-              path.join(__dirname, 'downloads', `${videoId}.webm`),
-              path.join(__dirname, 'downloads', `${videoId}.mp4`)
-            ].find(f => fs.existsSync(f) && fs.statSync(f).size > 10000);
-
-            if (code === 0 && found) {
-              videoPath = found;
-              resolve();
-            } else {
-              reject(new Error(`yt-dlp exited with code ${code}. Error: ${stderr.slice(-250) || 'Download failed'}`));
-            }
-          });
+        console.log(`[Import] Running yt-dlp ${args.join(' ')}`);
+        const proc = spawn('yt-dlp', args, { env: process.env, cwd: __dirname });
+        let stderr = '';
+        proc.stderr.on('data', (data) => {
+          stderr += data.toString();
         });
-      }
+
+        proc.on('close', async (code) => {
+          let found = [
+            videoPath,
+            path.resolve(__dirname, relativeVideoPath),
+            path.join(__dirname, 'downloads', `${videoId}.mp4`),
+            path.join(__dirname, 'downloads', `${videoId}.mkv`),
+            path.join(__dirname, 'downloads', `${videoId}.webm`)
+          ].find(f => fs.existsSync(f) && fs.statSync(f).size > 10000);
+
+          if (found && path.extname(found).toLowerCase() !== '.mp4') {
+            // Remux to mp4 if needed for full browser playback compatibility
+            const remuxedMp4 = path.join(__dirname, 'downloads', `${videoId}.mp4`);
+            try {
+              await runFFmpeg(['-y', '-i', found, '-c', 'copy', remuxedMp4]);
+              if (fs.existsSync(remuxedMp4) && fs.statSync(remuxedMp4).size > 10000) {
+                found = remuxedMp4;
+              }
+            } catch (rxErr) {
+              console.warn('[Import] Non-fatal remux notice:', rxErr.message);
+            }
+          }
+
+          if (code === 0 && found) {
+            videoPath = found;
+            resolve();
+          } else {
+            reject(new Error(`yt-dlp exited with code ${code}. Error: ${stderr.slice(-250) || 'Download failed'}`));
+          }
+        });
+      });
     } else {
       return res.status(400).json({ error: 'Please provide either a video URL or a file upload.' });
     }
