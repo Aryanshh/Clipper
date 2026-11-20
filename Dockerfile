@@ -2,28 +2,32 @@
 FROM node:20-slim
 
 # Install system dependencies
-# - python3: required by yt-dlp
+# - python3, python3-pip: required by yt-dlp & curl-cffi TLS impersonation
 # - ffmpeg: required for video slicing & audio extraction
-# - curl: to download yt-dlp
+# - curl, ca-certificates: TLS root certificates
 # - fontconfig, fonts-dejavu, fonts-indic: required for subtitle/caption burn-in and multilingual Hindi/Indian support
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
+    python3-venv \
     ffmpeg \
     curl \
     ca-certificates \
     fontconfig \
     fonts-dejavu \
     fonts-indic \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install modern yt-dlp with curl-cffi browser TLS impersonation and updated certifi
+RUN pip3 install --no-cache-dir --break-system-packages -U "yt-dlp[default,curl-cffi]" certifi
 
 # Set up non-root directory using the image's pre-configured node user (UID 1000)
 WORKDIR /home/node/app
 
-# Download yt-dlp to user's home/bin folder where it is writable and can be auto-updated
+# Ensure yt-dlp is available in /home/node/bin and PATH
 RUN mkdir -p /home/node/bin && \
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /home/node/bin/yt-dlp && \
-    chmod a+rx /home/node/bin/yt-dlp && \
+    ln -sf $(which yt-dlp) /home/node/bin/yt-dlp && \
     chown -R node:node /home/node/bin
 
 # Add the user's bin folder to the environment PATH
@@ -37,7 +41,7 @@ RUN npm ci --only=production
 COPY --chown=node:node . .
 
 # Create necessary directories and ensure they are owned by the node user
-RUN mkdir -p downloads clips exports fonts fontcache && chown -R node:node /home/node/app
+RUN mkdir -p downloads clips exports fonts fontcache public/assets && chown -R node:node /home/node/app
 
 # Switch to node user
 USER node

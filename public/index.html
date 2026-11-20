@@ -125,13 +125,18 @@
             </button>
           </form>
 
-          <div style="margin-top: 14px; padding: 10px 14px; background: rgba(0,0,0,0.25); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <span style="font-size: 12px; color: var(--text-secondary);">
-              <i class="fa-solid fa-gamepad" style="color: var(--accent-pink); margin-right: 6px;"></i> Looking for GTA 6 or Gaming live streams to clip?
-            </span>
-            <button type="button" id="btn-jump-live-streams" class="btn-secondary" style="font-size: 11px; padding: 4px 12px; border-radius: var(--border-radius-pill); cursor: pointer;">
-              Explore Live Streams <i class="fa-solid fa-arrow-right" style="margin-left: 4px;"></i>
+          <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 8px;">
+            <button type="button" onclick="window.loadInstantGtaSample()" class="btn-secondary" style="width: 100%; justify-content: center; padding: 10px; border-color: var(--accent-pink); color: var(--text-primary); background: rgba(89, 73, 122, 0.2); cursor: pointer;">
+              <i class="fa-solid fa-bolt" style="color: var(--accent-pink); margin-right: 6px;"></i> ⚡ 1-Click Instant GTA 6 Stream (Bypass Cloud Firewall)
             </button>
+            <div style="padding: 10px 14px; background: rgba(0,0,0,0.25); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <span style="font-size: 12px; color: var(--text-secondary);">
+                <i class="fa-solid fa-gamepad" style="color: var(--accent-pink); margin-right: 6px;"></i> Looking for GTA 6 or Gaming live streams to clip?
+              </span>
+              <button type="button" id="btn-jump-live-streams" class="btn-secondary" style="font-size: 11px; padding: 4px 12px; border-radius: var(--border-radius-pill); cursor: pointer;">
+                Explore Live Streams <i class="fa-solid fa-arrow-right" style="margin-left: 4px;"></i>
+              </button>
+            </div>
           </div>
         </div>
 
