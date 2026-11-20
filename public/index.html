@@ -74,7 +74,14 @@
               Parallel fan-out: simultaneously discovers all viral gaming moments (kills, clutches, reactions), cuts, transcribes speech, highlights text with rotating creative styles (Hormozi, MrBeast, Fire Glow, Cyberpunk, Highlighter, TikTok, Minimalist), and burns 9:16 vertical video.
             </p>
           </div>
-          <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="turbo-quality-select" style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Quality:</label>
+              <select id="turbo-quality-select" class="form-control" style="width: auto; padding: 5px 10px; font-size: 11.5px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+                <option value="1080p" selected>💎 1080p Full HD</option>
+                <option value="4k">👑 4K Ultra HD</option>
+              </select>
+            </div>
             <div style="display: flex; align-items: center; gap: 8px;">
               <label for="turbo-clip-count" style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Target:</label>
               <select id="turbo-clip-count" class="form-control" style="width: auto; padding: 5px 12px; font-size: 12px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
@@ -124,6 +131,11 @@
               <i class="fa-solid fa-circle-down"></i> Import & Process
             </button>
           </form>
+
+          <div style="margin-top: 10px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-circle-info" style="color: var(--accent-pink);"></i>
+            <span><strong>Cloud Datacenter Notice:</strong> If YouTube blocks your link, click <strong>Upload Local File</strong> above to import your video directly with 100% success and zero restrictions.</span>
+          </div>
 
           <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 8px;">
             <button type="button" onclick="window.loadInstantGtaSample()" class="btn-secondary" style="width: 100%; justify-content: center; padding: 10px; border-color: var(--accent-pink); color: var(--text-primary); background: rgba(89, 73, 122, 0.2); cursor: pointer;">
@@ -553,6 +565,21 @@
             </div>
 
             <div class="style-group">
+              <label class="group-label"><i class="fa-solid fa-gem" style="color: #38bdf8;"></i> Export Video Resolution</label>
+              <div class="quality-selectors" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button type="button" class="quality-btn active" data-quality="1080p" style="padding: 10px 8px; font-size: 11.5px; font-weight: 700; border-radius: var(--border-radius-sm); border: 1px solid var(--accent-color); background: rgba(56, 189, 248, 0.15); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                  <i class="fa-solid fa-badge-check" style="color: #10b981;"></i> 1080p Full HD
+                </button>
+                <button type="button" class="quality-btn" data-quality="4k" style="padding: 10px 8px; font-size: 11.5px; font-weight: 700; border-radius: var(--border-radius-sm); border: 1px solid var(--panel-border); background: var(--surface-alt); color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                  <i class="fa-solid fa-crown" style="color: #fbbf24;"></i> 4K Ultra HD
+                </button>
+              </div>
+              <div id="quality-desc" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                1080×1920 (Crisp Full HD • Optimal for YouTube Shorts & Reels)
+              </div>
+            </div>
+
+            <div class="style-group">
               <label class="group-label">AI Mirror Settings</label>
               <div class="ai-filter-options" style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted);">
@@ -859,6 +886,6 @@
   </div>
 
   <!-- Custom script -->
-  <script src="/public/app.js?v=2.2.0"></script>
+  <script src="/public/app.js?v=2.4.0"></script>
 </body>
 </html>

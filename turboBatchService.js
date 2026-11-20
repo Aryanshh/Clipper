@@ -129,8 +129,8 @@ class TurboBatchService {
     }
   }
 
-  // Generate ASS Subtitle content with animated active word highlight
-  createAssContent(captions, styleName) {
+  // Generate ASS Subtitle content with animated active word highlight & resolution-aware scaling
+  createAssContent(captions, styleName, targetW = 1080, targetH = 1920) {
     const cfg = this.getStyleConfig(styleName);
 
     // Group captions into small rhythmic 2-4 word phrases for high-retention reels
@@ -151,6 +151,13 @@ class TurboBatchService {
     const allText = captions.map(c => c.word || '').join(' ');
     const hasDevanagari = /[\u0900-\u097F]/.test(allText);
     const effectiveFont = hasDevanagari ? (process.platform === 'win32' ? 'Nirmala UI' : 'Noto Sans Devanagari') : cfg.fontName;
+
+    // Proportional font sizing and margins based on target canvas resolution (1080p vs 4K)
+    const fontScale = targetH / 720;
+    const scaledFontSize = Math.round(cfg.fontSize * (fontScale * 0.85));
+    const scaledOutline = Math.max(2, Math.round(cfg.outline * (fontScale * 0.75)));
+    const scaledShadow = Math.round(cfg.shadow * fontScale * 0.75);
+    const scaledMarginV = Math.round(300 * (targetH / 1920));
 
     const dialogueEvents = [];
     for (const phrase of phrases) {
@@ -175,13 +182,13 @@ class TurboBatchService {
 Title: Clipper Turbo Batch Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
-PlayResX: 1280
-PlayResY: 720
+PlayResX: ${targetW}
+PlayResY: ${targetH}
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${effectiveFont},${cfg.fontSize},&H${cfg.primaryColor},&H${cfg.primaryColor},&H${cfg.outlineColor},&H00000000,-1,0,0,0,100,100,0,0,1,${cfg.outline},${cfg.shadow},${cfg.alignment},10,10,35,1
+Style: Default,${effectiveFont},${scaledFontSize},&H${cfg.primaryColor},&H${cfg.primaryColor},&H${cfg.outlineColor},&H00000000,-1,0,0,0,100,100,0,0,1,${scaledOutline},${scaledShadow},${cfg.alignment},24,24,${scaledMarginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -198,9 +205,13 @@ ${dialogueEvents.join('\n')}
    * Main Turbo Batch Orchestrator
    * Produces multiple complete, transcribed, styled, and 9:16 rendered clips in parallel.
    */
-  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips = null, maxClips = 'auto', onProgress = null }) {
+  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips = null, maxClips = 'auto', quality = '1080p', onProgress = null }) {
     const batchId = `turbo_${Date.now()}`;
     const startTime = Date.now();
+
+    const is4K = quality === '4k' || quality === '2160p';
+    const targetW = is4K ? 2160 : 1080;
+    const targetH = is4K ? 3840 : 1920;
 
     const batchState = {
       batchId,
@@ -212,6 +223,8 @@ ${dialogueEvents.join('\n')}
       completedCount: 0,
       workers: [],
       clips: [],
+      quality: is4K ? '4K Ultra HD' : '1080p Full HD',
+      resolution: `${targetW}x${targetH}`,
       error: null
     };
 
@@ -507,29 +520,31 @@ Return strictly JSON matching the schema.`;
           ai.files.delete({ name: audioUpload.name }).catch(() => {});
         }
 
-        // Stage 4: Subtitle Styling & ASS Generation
+        // Stage 4: Subtitle Styling & ASS Generation (Native Canvas Resolution)
         workerState.stage = 'styling';
         workerState.progress = 65;
         updateBatch('processing', `Worker ${index + 1}: Applying ${assignedStyle.toUpperCase()} subtitle styling...`);
 
-        const assContent = this.createAssContent(captions, assignedStyle);
+        const assContent = this.createAssContent(captions, assignedStyle, targetW, targetH);
         const assFilename = `turbo_subs_${videoId}_${index}_${Date.now()}.ass`;
         const assPath = path.join(__dirname, 'clips', assFilename);
         fs.writeFileSync(assPath, assContent, 'utf-8');
 
-        // Stage 5: Concurrency-Managed CPU Multi-Threaded Subtitle Burn & 9:16 Center Crop
+        // Stage 5: Concurrency-Managed CPU Multi-Threaded Subtitle Burn & 1080p/4K 9:16 Center Crop
         workerState.stage = 'rendering';
         workerState.progress = 75;
-        updateBatch('processing', `Worker ${index + 1}: In render pool (CPU multi-threading & 9:16 crop)...`);
+        updateBatch('processing', `Worker ${index + 1}: In render pool (CPU multi-threading & ${is4K ? '4K' : '1080p'} 9:16 export)...`);
 
         const exportFilename = `export_turbo_${videoId}_${index}_${Date.now()}.mp4`;
         const activeCropMode = cropMode || 'crop';
         let filterComplex = '';
 
         if (activeCropMode === 'fit_blur') {
-          filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+          const bgFilter = `[bg_src]scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH},boxblur=25:5[bg]`;
+          const fgFilter = `[fg_src]scale=${targetW}:-2:flags=lanczos[fg]`;
+          filterComplex = `split=2[bg_src][fg_src];${bgFilter};${fgFilter};[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
         } else {
-          filterComplex = `crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
+          filterComplex = `crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=${targetW}:${targetH}:flags=lanczos,subtitles=${assFilename}`;
         }
 
         // Acquire render concurrency slot (max 3 simultaneous renders)
@@ -537,15 +552,15 @@ Return strictly JSON matching the schema.`;
         try {
           await this.runFFmpeg([
             '-y',
-            '-i', clipFilename,
+            '-i', clipPath,
             '-vf', filterComplex,
             '-c:v', 'libx264',
-            '-crf', '22',
-            '-preset', 'ultrafast',
+            '-crf', is4K ? '16' : '18',
+            '-preset', 'fast',
             '-threads', '0',
             '-pix_fmt', 'yuv420p',
             '-c:a', 'aac',
-            '-b:a', '128k',
+            '-b:a', is4K ? '320k' : '192k',
             '-strict', '-2',
             `../exports/${exportFilename}`
           ], path.join(__dirname, 'clips'));
@@ -572,6 +587,8 @@ Return strictly JSON matching the schema.`;
           status: 'ready',
           durationSeconds: Math.round(durationSec),
           aspectRatio: '9:16',
+          quality: is4K ? '4K Ultra HD' : '1080p Full HD',
+          resolution: `${targetW}x${targetH}`,
           style: assignedStyle,
           captions
         };

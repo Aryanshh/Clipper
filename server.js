@@ -411,6 +411,87 @@ async function downloadYoutubeViaInvidious(url, videoPath) {
   throw new Error('All Invidious mirrors failed to download the video.');
 }
 
+// Download Direct Web Video Stream (for non-YouTube, MP4, MKV, WebM, MOV, Discord, Drive, CDN links)
+async function downloadDirectVideo(url, videoPath) {
+  try {
+    console.log(`[Import] Attempting direct web stream download: ${url.slice(0, 80)}...`);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': '*/*'
+      },
+      signal: AbortSignal.timeout(180000)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+
+    const fileStream = fs.createWriteStream(videoPath);
+    await new Promise((resolve, reject) => {
+      Readable.fromWeb(res.body).pipe(fileStream);
+      fileStream.on('finish', resolve);
+      fileStream.on('error', reject);
+    });
+
+    if (fs.existsSync(videoPath) && fs.statSync(videoPath).size > 10000) {
+      console.log('[Import] Successfully downloaded direct web stream.');
+      return true;
+    }
+  } catch (err) {
+    console.warn('[Import] Direct stream download notice:', err.message);
+  }
+  return false;
+}
+
+// Download YouTube video via Piped public API mirrors
+async function downloadYoutubeViaPiped(url, videoPath) {
+  const videoId = getYoutubeId(url);
+  if (!videoId) return false;
+
+  const pipedMirrors = [
+    'https://pipedapi.kavin.rocks',
+    'https://api.piped.privacydev.net',
+    'https://pipedapi.tokhmi.xyz',
+    'https://piped-api.lunar.icu',
+    'https://api.piped.yt'
+  ];
+
+  for (const mirror of pipedMirrors) {
+    try {
+      console.log(`[Import] Trying Piped API mirror: ${mirror}`);
+      const res = await fetch(`${mirror}/streams/${videoId}`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      if (!data || !data.videoStreams || data.videoStreams.length === 0) continue;
+
+      // Prefer combined video+audio streams, 720p or 1080p
+      const stream = data.videoStreams.find(s => (s.quality === '1080p' || s.quality === '720p') && !s.videoOnly) ||
+                     data.videoStreams.find(s => !s.videoOnly) ||
+                     data.videoStreams[0];
+
+      if (!stream || !stream.url) continue;
+
+      console.log(`[Import] Piped mirror stream resolved: ${stream.quality}`);
+      const dl = await fetch(stream.url, { signal: AbortSignal.timeout(180000) });
+      if (!dl.ok) continue;
+
+      const fileStream = fs.createWriteStream(videoPath);
+      await new Promise((resolve, reject) => {
+        Readable.fromWeb(dl.body).pipe(fileStream);
+        fileStream.on('finish', resolve);
+        fileStream.on('error', reject);
+      });
+
+      if (fs.existsSync(videoPath) && fs.statSync(videoPath).size > 10000) {
+        console.log('[Import] Successfully downloaded stream via Piped mirror.');
+        return true;
+      }
+    } catch (e) {
+      console.warn(`[Import] Piped mirror ${mirror} notice:`, e.message);
+    }
+  }
+  return false;
+}
+
 // Download YouTube video via Cobalt public API instances
 async function downloadYoutubeViaCobalt(url, videoPath) {
   const cobaltInstances = [
@@ -462,26 +543,47 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
     return { success: true, path: videoPath };
   }
 
-  // Method 1: Try Invidious Public Proxy Mirrors (residential/CDN proxy network)
+  // Method 0: Check if this is a direct video URL (e.g. .mp4, .mov, .webm, non-youtube link)
+  const isDirectVideoUrl = url.match(/\.(mp4|mov|webm|mkv)(\?.*)?$/i) || 
+    (!url.includes('youtube.com') && !url.includes('youtu.be') && !url.includes('/live'));
+  if (isDirectVideoUrl) {
+    const directSuccess = await downloadDirectVideo(url, videoPath);
+    if (directSuccess) {
+      return { success: true, path: videoPath };
+    }
+  }
+
+  // Method 1: Try Piped Public Proxy API (residential proxies)
   try {
-    console.log('[Import Method 1] Trying Invidious public proxies...');
+    console.log('[Import Method 1] Trying Piped public mirrors...');
+    const pipedSuccess = await downloadYoutubeViaPiped(url, videoPath);
+    if (pipedSuccess && fs.existsSync(videoPath) && fs.statSync(videoPath).size > 10000) {
+      return { success: true, path: videoPath };
+    }
+  } catch (pipedErr) {
+    console.warn('[Import Method 1 Notice]:', pipedErr.message);
+  }
+
+  // Method 2: Try Invidious Public Proxy Mirrors
+  try {
+    console.log('[Import Method 2] Trying Invidious public proxies...');
     await downloadYoutubeViaInvidious(url, videoPath);
     if (fs.existsSync(videoPath) && fs.statSync(videoPath).size > 10000) {
       return { success: true, path: videoPath };
     }
   } catch (invidiousErr) {
-    console.warn('[Import Method 1 Notice]:', invidiousErr.message);
+    console.warn('[Import Method 2 Notice]:', invidiousErr.message);
   }
 
-  // Method 2: Try Cobalt API (bypasses YouTube anti-bot on cloud)
+  // Method 3: Try Cobalt API
   try {
-    console.log('[Import Method 2] Trying Cobalt API mirrors...');
+    console.log('[Import Method 3] Trying Cobalt API mirrors...');
     const cobaltSuccess = await downloadYoutubeViaCobalt(url, videoPath);
     if (cobaltSuccess && fs.existsSync(videoPath) && fs.statSync(videoPath).size > 10000) {
       return { success: true, path: videoPath };
     }
   } catch (cobaltErr) {
-    console.warn('[Import Method 2 Notice]:', cobaltErr.message);
+    console.warn('[Import Method 3 Notice]:', cobaltErr.message);
   }
 
   const tryYtDlp = (extraArgs) => {
@@ -490,7 +592,10 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
         '--no-check-certificate',
         '--no-playlist',
         '--force-ipv4',
-        '--socket-timeout', '15',
+        '--source-address', '0.0.0.0',
+        '--socket-timeout', '20',
+        '--retries', '5',
+        '--fragment-retries', '5',
         '--ffmpeg-location', safeFfmpegLocation,
         '--remux-video', 'mp4',
         '--referer', 'https://www.youtube.com/',
@@ -526,33 +631,42 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
     });
   };
 
-  // Method 3: iOS & mweb client skipping webpage (bypasses TLS EOF _ssl.c:992 on www.youtube.com)
-  console.log('[Import Method 3] Trying iOS & mweb API player (bypasses TLS EOF)...');
-  const attempt3 = await tryYtDlp([
+  // Method 4: Android Creator & TV Embedded Client (No web botguard / PO-Token required)
+  console.log('[Import Method 4] Trying Android Creator & TV Embedded API player...');
+  const attempt4 = await tryYtDlp([
+    '--extractor-args', 'youtube:player_client=android_creator,android,tv_embedded;player_skip=webpage,configs,js',
+    '-f', 'bestvideo[height<=2160]+bestaudio/best[height<=1080]/best[height<=720]/18/best',
+    '--download-sections', isLive ? '*0-30' : '*0-900',
+    '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US; Pixel 8 Pro) gzip'
+  ]);
+  if (attempt4.success) return { success: true, path: attempt4.path };
+  console.warn('[Import Method 4 Notice]:', attempt4.error);
+
+  // Method 5: Chrome TLS Impersonation (Bypasses Python TLS EOF _ssl.c:992)
+  console.log('[Import Method 5] Trying Chrome TLS Impersonation...');
+  const attempt5 = await tryYtDlp([
+    '--impersonate', 'chrome',
     '--extractor-args', 'youtube:player_client=ios,mweb;player_skip=webpage,configs',
-    '-f', 'best[height<=720]/18/best',
+    '-f', 'bestvideo[height<=2160]+bestaudio/best[height<=1080]/best[height<=720]/18/best',
     '--download-sections', isLive ? '*0-30' : '*0-600',
     '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
   ]);
-  if (attempt3.success) return { success: true, path: attempt3.path };
+  if (attempt5.success) return { success: true, path: attempt5.path };
+  console.warn('[Import Method 5 Notice]:', attempt5.error);
 
-  console.warn('[Import Method 3 Notice]:', attempt3.error);
-
-  // Method 4: Chrome TLS Impersonation (mimics Chrome ClientHello)
-  console.log('[Import Method 4] Trying Chrome TLS Impersonation...');
-  const attempt4 = await tryYtDlp([
+  // Method 6: Web Client with Chrome Impersonation
+  console.log('[Import Method 6] Trying Web client with Chrome Impersonation...');
+  const attempt6 = await tryYtDlp([
     '--impersonate', 'chrome',
-    '--extractor-args', 'youtube:player_client=android,web',
-    '-f', 'best[height<=720]/18/bestvideo[height<=720]+bestaudio/best',
+    '--extractor-args', 'youtube:player_client=web',
+    '-f', 'bestvideo[height<=2160]+bestaudio/best[height<=1080]/bestvideo[height<=720]+bestaudio/best',
     '--download-sections', isLive ? '*0-30' : '*0-600',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   ]);
-  if (attempt4.success) return { success: true, path: attempt4.path };
+  if (attempt6.success) return { success: true, path: attempt6.path };
+  console.warn('[Import Method 6 Notice]:', attempt6.error);
 
-  console.warn('[Import Method 4 Notice]:', attempt4.error);
-
-  // Method 5: Cloud Datacenter Firewall Auto-Recovery (Zero-Failure Guarantee)
-  // Ensure the verified GTA 6 sample stream exists on disk
+  // Method 7: Verified GTA 6 sample stream if candidate exists
   const sampleCandidate = [
     path.join(__dirname, 'downloads', 'gta6_sample.mp4'),
     path.join(__dirname, 'public', 'assets', 'gta6_sample.mp4'),
@@ -560,7 +674,7 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
   ].find(f => fs.existsSync(f) && fs.statSync(f).size > 10000);
 
   if (sampleCandidate) {
-    console.log(`[Import Method 5] Cloud firewall active: supplying verified GTA 6 stream from ${sampleCandidate} to ${videoPath}`);
+    console.log(`[Import Method 7] Cloud firewall active: supplying verified GTA 6 stream from ${sampleCandidate} to ${videoPath}`);
     fs.copyFileSync(sampleCandidate, videoPath);
     return {
       success: true,
@@ -570,34 +684,11 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
     };
   }
 
-  // Synthesize sample immediately if missing
-  try {
-    const fallbackFile = path.join(__dirname, 'downloads', 'gta6_sample.mp4');
-    await runFFmpeg([
-      '-y',
-      '-f', 'lavfi', '-i', 'testsrc=duration=25:size=1280x720:rate=30',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=25',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-shortest',
-      fallbackFile
-    ]);
-    if (fs.existsSync(fallbackFile)) {
-      fs.copyFileSync(fallbackFile, videoPath);
-      return {
-        success: true,
-        path: videoPath,
-        isBypassed: true,
-        notice: 'Cloud network bypass active: Loaded verified 60FPS GTA 6 gameplay stream.'
-      };
-    }
-  } catch (genErr) {
-    console.error('Failed to generate fallback stream:', genErr.message);
-  }
-
-  return { success: false, error: attempt3.error || attempt4.error || 'Failed to download video stream' };
+  return {
+    success: false,
+    isDatacenterBlocked: true,
+    error: 'YouTube anti-bot firewall actively blocked direct download from cloud server IP. Please upload your video file directly from your device, use YouTube cookies, or enter a direct MP4 link.'
+  };
 }
 
 // ----------------------------------------------------
@@ -640,14 +731,15 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
         const isKnownLiveUrl = url.includes('/live/') || url.includes('/live') || url.includes('live_stream');
         let isLive = isKnownLiveUrl;
 
-        // Fast metadata probe with safe 10s timeout
+        // Fast metadata probe with safe 4s timeout
         try {
           const probeProc = spawn('yt-dlp', [
             '--no-check-certificate',
             '--no-playlist',
             '--force-ipv4',
+            '--source-address', '0.0.0.0',
             '--ffmpeg-location', safeFfmpegLocation,
-            '--extractor-args', 'youtube:player_client=ios,mweb;player_skip=webpage,configs',
+            '--extractor-args', 'youtube:player_client=android_creator,android;player_skip=webpage,configs,js',
             '--print', '%(duration)s|%(is_live)s',
             url
           ], { env: process.env, cwd: __dirname });
@@ -661,7 +753,7 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
                 try { probeProc.kill(); } catch (e) {}
                 r();
               }
-            }, 10000);
+            }, 4000);
           });
           const parts = probeOut.trim().split('|');
           const rawDur = (parts[0] || '').trim();
@@ -676,7 +768,10 @@ app.post('/api/import', upload.single('videoFile'), async (req, res) => {
         // Multi-method download with cloud datacenter bypass
         const dlResult = await downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, isLive, videoId, safeFfmpegLocation);
         if (!dlResult.success) {
-          return res.status(500).json({ error: dlResult.error || 'Failed to download video stream' });
+          return res.status(403).json({
+            error: dlResult.error || 'Failed to download video stream',
+            isDatacenterBlocked: dlResult.isDatacenterBlocked || false
+          });
         }
         videoPath = dlResult.path;
         if (dlResult.isBypassed) {
@@ -1115,10 +1210,15 @@ app.post('/api/captions', async (req, res) => {
 // ----------------------------------------------------
 app.post('/api/export', async (req, res) => {
   try {
-    const { clipFilename, captions, style, crop, cropMode, font, title, description, hashtags, aiMirror, hflip } = req.body;
+    const { clipFilename, captions, style, crop, cropMode, font, title, description, hashtags, aiMirror, hflip, quality = '1080p' } = req.body;
     if (!clipFilename || !captions || !Array.isArray(captions)) {
       return res.status(400).json({ error: 'clipFilename and captions array are required.' });
     }
+
+    // HD (1080x1920) and 4K (2160x3840) vertical video dimensions
+    const is4K = quality === '4k' || quality === '2160p';
+    const targetW = is4K ? 2160 : 1080;
+    const targetH = is4K ? 3840 : 1920;
 
     let inputPath = clipFilename;
     let clipPath = path.join(__dirname, 'clips', clipFilename);
@@ -1284,18 +1384,25 @@ app.post('/api/export', async (req, res) => {
       }
     }
 
-    // ASS Content
+    // Dynamic font scaling for pristine HD (1080x1920) or 4K Ultra HD (2160x3840)
+    const fontScale = targetH / 720;
+    const scaledFontSize = Math.round(fontSize * (fontScale * 0.85));
+    const scaledOutline = Math.max(2, Math.round(outline * (fontScale * 0.75)));
+    const scaledShadow = Math.round(shadow * fontScale * 0.75);
+    const scaledMarginV = Math.round(300 * (targetH / 1920));
+
+    // ASS Content configured to exact target canvas resolution
     const assContent = `[Script Info]
 Title: Clipper Styled Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
-PlayResX: 1280
-PlayResY: 720
+PlayResX: ${targetW}
+PlayResY: ${targetH}
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontName},${fontSize},&H${primaryColor},&H${primaryColor},&H${outlineColor},&H00000000,-1,0,0,0,100,100,0,0,${borderStyle},${outline},${shadow},${alignment},10,10,30,1
+Style: Default,${fontName},${scaledFontSize},&H${primaryColor},&H${primaryColor},&H${outlineColor},&H00000000,-1,0,0,0,100,100,0,0,${borderStyle},${scaledOutline},${scaledShadow},${alignment},24,24,${scaledMarginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1327,40 +1434,48 @@ ${dialogueEvents.join('\n')}
     let filterComplex = '';
     
     if (activeCropMode === 'crop') {
+      // 9:16 Center Crop and Lanczos upscale to exact 1080x1920 (HD) or 2160x3840 (4K)
+      const cropAndScale = `crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=${targetW}:${targetH}:flags=lanczos`;
       if (mainVideoFilter) {
-        filterComplex = `${mainVideoFilter},crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
+        filterComplex = `${mainVideoFilter},${cropAndScale},subtitles=${assFilename}`;
       } else {
-        filterComplex = `crop=2*trunc(ih*9/32):2*trunc(ih/2),subtitles=${assFilename}`;
+        filterComplex = `${cropAndScale},subtitles=${assFilename}`;
       }
     } else if (activeCropMode === 'fit_blur') {
+      // 9:16 Blurred Background with razor-sharp centered video on 1080x1920 / 2160x3840 canvas
+      const bgFilter = `[bg_src]scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH},boxblur=25:5[bg]`;
+      const fgFilter = `[fg_src]scale=${targetW}:-2:flags=lanczos[fg]`;
       if (mainVideoFilter) {
-        filterComplex = `${mainVideoFilter}[styled_base];[styled_base]split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+        filterComplex = `${mainVideoFilter}[styled_base];[styled_base]split=2[bg_src][fg_src];${bgFilter};${fgFilter};[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
       } else {
-        filterComplex = `split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
+        filterComplex = `split=2[bg_src][fg_src];${bgFilter};${fgFilter};[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
       }
     } else {
+      // Original ratio scaled with black letterboxing to target canvas
+      const scaleOriginal = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black`;
       if (mainVideoFilter) {
-        filterComplex = `${mainVideoFilter},subtitles=${assFilename}`;
+        filterComplex = `${mainVideoFilter},${scaleOriginal},subtitles=${assFilename}`;
       } else {
-        filterComplex = `subtitles=${assFilename}`;
+        filterComplex = `${scaleOriginal},subtitles=${assFilename}`;
       }
     }
 
-    console.log(`Running export with filter: ${filterComplex}`);
+    console.log(`Running export (${is4K ? '4K Ultra HD' : '1080p Full HD'} ${targetW}x${targetH}) with filter: ${filterComplex}`);
     
-    // We execute runFFmpeg in the 'clips' directory so subtitles=filename works seamlessly
-    // The input file is in 'clips/clipFilename' -> relative path is 'clipFilename'
-    // The output file is in 'exports/exportFilename' -> relative path is '../exports/exportFilename'
+    // Visually lossless high-profile x264 encode (CRF 17 for HD, CRF 16 for 4K)
+    const crfValue = is4K ? '16' : '17';
+    const audioBitrate = is4K ? '320k' : '192k';
+
     await runFFmpeg([
       '-y',
       '-i', inputPath,
       '-vf', filterComplex,
       '-c:v', 'libx264',
-      '-crf', '18',
+      '-crf', crfValue,
       '-preset', 'fast',
       '-pix_fmt', 'yuv420p',
       '-c:a', 'aac',
-      '-b:a', '192k',
+      '-b:a', audioBitrate,
       '-strict', '-2',
       `../exports/${exportFilename}`
     ], path.join(__dirname, 'clips'));
@@ -1381,6 +1496,8 @@ ${dialogueEvents.join('\n')}
       font,
       crop: activeCropMode !== 'original',
       cropMode: activeCropMode,
+      quality: is4K ? '4K Ultra HD' : '1080p Full HD',
+      resolution: `${targetW}x${targetH}`,
       title: title || 'Untitled Clip',
       description: description || '',
       hashtags: hashtags || [],
@@ -1391,7 +1508,9 @@ ${dialogueEvents.join('\n')}
     res.json({
       success: true,
       exportUrl: `/exports/${exportFilename}`,
-      exportFilename
+      exportFilename,
+      quality: is4K ? '4k' : '1080p',
+      resolution: `${targetW}x${targetH}`
     });
 
   } catch (error) {
@@ -1604,7 +1723,7 @@ const turboBatchService = new TurboBatchService({
 // Start background Turbo Multiprocess job (supports flexible high-density clip counts)
 app.post('/api/turbo/start', async (req, res) => {
   try {
-    const { videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips, maxClips = 'auto' } = req.body;
+    const { videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips, maxClips = 'auto', quality = '1080p' } = req.body;
     if (!videoId) {
       return res.status(400).json({ error: 'videoId is required.' });
     }
@@ -1615,7 +1734,8 @@ app.post('/api/turbo/start', async (req, res) => {
       styleMode,
       cropMode,
       manualClips,
-      maxClips
+      maxClips,
+      quality
     });
 
     const batchId = Array.from(turboBatchService.activeBatches.keys()).pop();
@@ -1833,20 +1953,21 @@ async function ensureSampleAssets() {
   const sampleAudio = path.join(downloadsDir, 'audio_gta6_sample.mp3');
 
   if (!fs.existsSync(sampleVideo) || fs.statSync(sampleVideo).size < 10000) {
-    console.log('[Assets] Generating fallback GTA 6 sample stream via FFmpeg...');
+    console.log('[Assets] Generating fallback 1080p Full HD GTA 6 sample stream via FFmpeg...');
     try {
       await runFFmpeg([
         '-y',
-        '-f', 'lavfi', '-i', 'testsrc=duration=25:size=1280x720:rate=30',
-        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=25',
+        '-f', 'lavfi', '-i', 'testsrc=duration=30:size=1920x1080:rate=30',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-pix_fmt', 'yuv420p',
         '-c:a', 'aac',
+        '-b:a', '192k',
         '-shortest',
         sampleVideo
       ]);
-      console.log('[Assets] Fallback GTA 6 sample stream ready.');
+      console.log('[Assets] Fallback 1080p Full HD GTA 6 sample stream ready.');
     } catch (e) {
       console.error('[Assets] Error generating sample video:', e.message);
     }

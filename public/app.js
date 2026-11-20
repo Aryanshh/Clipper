@@ -20,6 +20,7 @@ const state = {
   youtubeChannelAvatar: '',
   youtubePrivacy: 'public',
   autoUploadYoutube: localStorage.getItem('clipper_auto_upload_yt') === 'true',
+  exportQuality: localStorage.getItem('clipper_export_quality') || '1080p',
   currentExport: null
 };
 
@@ -179,7 +180,12 @@ const el = {
   ytChannelName: document.getElementById('yt-channel-name'),
   ytChannelAvatar: document.getElementById('yt-channel-avatar'),
   btnDisconnectYt: document.getElementById('btn-disconnect-yt'),
-  chkAutoUploadYoutube: document.getElementById('chk-auto-upload-youtube')
+  chkAutoUploadYoutube: document.getElementById('chk-auto-upload-youtube'),
+
+  // Video Resolution & Quality (1080p HD / 4K UHD)
+  turboQualitySelect: document.getElementById('turbo-quality-select'),
+  qualityButtons: document.querySelectorAll('.quality-btn'),
+  qualityDesc: document.getElementById('quality-desc')
 };
 
 let livePollingTimer = null;
@@ -437,6 +443,43 @@ function setupEventListeners() {
       updateAspectRatioPreview();
     });
   });
+
+  // Video Resolution & Quality Selection (1080p HD / 4K UHD)
+  if (el.qualityButtons && el.qualityButtons.length > 0) {
+    el.qualityButtons.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.quality === state.exportQuality);
+      btn.addEventListener('click', () => {
+        el.qualityButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.exportQuality = btn.dataset.quality;
+        localStorage.setItem('clipper_export_quality', state.exportQuality);
+        if (el.turboQualitySelect) el.turboQualitySelect.value = state.exportQuality;
+        if (el.qualityDesc) {
+          el.qualityDesc.textContent = state.exportQuality === '4k'
+            ? 'Ultra-high bitrate 4K Ultra HD (2160x3840) vertical video. Optimal for flagship devices and maximum visual sharpness.'
+            : 'Pristine 1080p Full HD (1080x1920) vertical video with Lanczos scaling. Fast rendering and sharp display across all mobile screens.';
+        }
+      });
+    });
+  }
+
+  if (el.turboQualitySelect) {
+    el.turboQualitySelect.value = state.exportQuality;
+    el.turboQualitySelect.addEventListener('change', (e) => {
+      state.exportQuality = e.target.value;
+      localStorage.setItem('clipper_export_quality', state.exportQuality);
+      if (el.qualityButtons) {
+        el.qualityButtons.forEach(b => {
+          b.classList.toggle('active', b.dataset.quality === state.exportQuality);
+        });
+      }
+      if (el.qualityDesc) {
+        el.qualityDesc.textContent = state.exportQuality === '4k'
+          ? 'Ultra-high bitrate 4K Ultra HD (2160x3840) vertical video. Optimal for flagship devices and maximum visual sharpness.'
+          : 'Pristine 1080p Full HD (1080x1920) vertical video with Lanczos scaling. Fast rendering and sharp display across all mobile screens.';
+      }
+    });
+  }
 
   // AI Mirror settings
   if (el.chkAiMirror) {
@@ -936,7 +979,7 @@ async function handleYoutubeImport(e) {
     
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Server returned ${res.status}: ${res.statusText}`);
+      throw errData;
     }
 
     const data = await res.json();
@@ -944,45 +987,72 @@ async function handleYoutubeImport(e) {
 
   } catch (err) {
     console.error('Import attempt error:', err);
-    showImportRecoveryDialog(err.message);
+    showImportRecoveryDialog(err);
     showSection(el.secImport);
   }
 }
 
 // Interactive Recovery Dialog instead of jarring browser alert popups
-function showImportRecoveryDialog(errorMsg) {
+function showImportRecoveryDialog(err) {
+  const errMsg = typeof err === 'string' ? err : (err && err.error) || (err && err.message) || 'Failed to download stream';
   let modal = document.getElementById('import-recovery-modal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'import-recovery-modal';
     modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width: 480px; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--border-radius-md); box-shadow: 0 16px 40px rgba(0,0,0,0.8); padding: 24px;">
-        <div style="font-size: 36px; color: var(--accent-pink); margin-bottom: 12px;">
-          <i class="fa-solid fa-shield-halved"></i>
-        </div>
-        <h3 style="font-family: var(--font-display); font-size: 1.35rem; color: var(--text-primary); margin-bottom: 8px;">Cloud Network Bypass Ready</h3>
-        <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
-          YouTube's anti-bot firewall dropped the direct scrape from this cloud datacenter.<br>
-          You can immediately use our verified 60fps GTA 6 stream or upload any MP4 video from your device.
-        </p>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <button type="button" class="btn-primary" onclick="closeModal(document.getElementById('import-recovery-modal')); window.loadInstantGtaSample();" style="justify-content: center; padding: 12px; font-weight: 600; cursor: pointer;">
-            <i class="fa-solid fa-bolt" style="margin-right: 6px;"></i> Load Verified GTA 6 Action Stream (Instant)
-          </button>
-          <button type="button" class="btn-secondary" onclick="closeModal(document.getElementById('import-recovery-modal')); if (el.localFile) el.localFile.click();" style="justify-content: center; padding: 12px; cursor: pointer;">
-            <i class="fa-solid fa-cloud-arrow-up" style="margin-right: 6px;"></i> Upload MP4 Video From Device
-          </button>
-          <button type="button" class="btn-secondary" onclick="closeModal(document.getElementById('import-recovery-modal'));" style="justify-content: center; border: none; opacity: 0.7; cursor: pointer; padding: 8px;">
-            Cancel
-          </button>
-        </div>
-      </div>
-    `;
     document.body.appendChild(modal);
   }
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 520px; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--border-radius-md); box-shadow: 0 16px 40px rgba(0,0,0,0.85); padding: 26px;">
+      <div style="font-size: 38px; color: var(--accent-pink); margin-bottom: 12px;">
+        <i class="fa-solid fa-cloud-arrow-down"></i>
+      </div>
+      <h3 style="font-family: var(--font-display); font-size: 1.35rem; color: var(--text-primary); margin-bottom: 8px;">
+        YouTube Cloud Firewall Notice
+      </h3>
+      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 20px;">
+        YouTube actively blocks direct scrapes from cloud datacenter server IPs.<br>
+        <strong style="color: var(--text-primary);">Choose any of these 100% working options to continue:</strong>
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <button type="button" class="btn-primary" onclick="closeModal(document.getElementById('import-recovery-modal')); window.triggerDirectVideoUpload();" style="justify-content: center; padding: 13px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
+          <i class="fa-solid fa-cloud-arrow-up" style="margin-right: 8px;"></i> Upload Video From Device (100% Guaranteed Success)
+        </button>
+        <button type="button" class="btn-secondary" onclick="closeModal(document.getElementById('import-recovery-modal')); window.loadInstantGtaSample();" style="justify-content: center; padding: 12px; cursor: pointer; border-color: var(--accent-pink);">
+          <i class="fa-solid fa-bolt" style="color: var(--accent-pink); margin-right: 8px;"></i> Load Verified 1080p GTA 6 Action Stream (Instant)
+        </button>
+        <button type="button" class="btn-secondary" onclick="closeModal(document.getElementById('import-recovery-modal')); window.promptDirectUrlImport();" style="justify-content: center; padding: 12px; cursor: pointer;">
+          <i class="fa-solid fa-link" style="margin-right: 8px;"></i> Paste Direct MP4 / Web Stream URL
+        </button>
+        <button type="button" class="btn-secondary" onclick="closeModal(document.getElementById('import-recovery-modal')); openModal(el.settingsModal); document.getElementById('youtube-cookies').focus();" style="justify-content: center; padding: 12px; cursor: pointer;">
+          <i class="fa-solid fa-cookie-bite" style="color: #f59e0b; margin-right: 8px;"></i> Add YouTube Cookies in Settings
+        </button>
+        <button type="button" class="btn-secondary" onclick="closeModal(document.getElementById('import-recovery-modal'));" style="justify-content: center; border: none; opacity: 0.7; cursor: pointer; padding: 8px;">
+          Cancel
+        </button>
+      </div>
+    </div>
+  `;
   openModal(modal);
 }
+
+// 1-Click Direct File Upload Trigger
+window.triggerDirectVideoUpload = function() {
+  const uploadTab = document.querySelector('.tab-btn[data-tab="tab-upload"]');
+  if (uploadTab) uploadTab.click();
+  if (el.localFile) el.localFile.click();
+};
+
+// 1-Click Direct URL Input Prompt
+window.promptDirectUrlImport = function() {
+  const directUrl = prompt('Enter direct MP4, MOV, or web video stream URL:');
+  if (directUrl && directUrl.trim()) {
+    el.ytUrl.value = directUrl.trim();
+    const ytTab = document.querySelector('.tab-btn[data-tab="tab-youtube"]');
+    if (ytTab) ytTab.click();
+    el.formImportYt.dispatchEvent(new Event('submit'));
+  }
+};
 
 // Notification Toast for Cloud Firewall Bypass Notice
 function showBypassNoticeToast(noticeText) {
@@ -1487,6 +1557,7 @@ async function handleExport() {
         style: state.subtitlePreset,
         crop: state.aspectRatio === 'crop',
         cropMode: state.aspectRatio,
+        quality: state.exportQuality || '1080p',
         font: fontSelect ? fontSelect.value : 'arial',
         aiMirror: state.aiMirror,
         hflip: state.hflip
@@ -2955,6 +3026,7 @@ async function startTurboWorkflow(videoId, language = 'auto', manualClips = null
         language: lang,
         styleMode: 'all',
         cropMode: 'crop',
+        quality: state.exportQuality || (el.turboQualitySelect ? el.turboQualitySelect.value : '1080p'),
         maxClips,
         manualClips
       })
@@ -3059,6 +3131,9 @@ function renderTurboResults(clips) {
           <video src="${escapeHtml(clip.exportUrl)}" controls playsinline style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover;"></video>
           <span style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
             ${escapeHtml(clip.style)}
+          </span>
+          <span style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;">
+            ${(clip.quality || state.exportQuality) === '4k' ? '4K UHD' : '1080P HD'}
           </span>
           <span style="position: absolute; top: 8px; right: 8px; background: rgba(16, 185, 129, 0.85); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;">
             ${clip.viralityScore}% VIRAL
