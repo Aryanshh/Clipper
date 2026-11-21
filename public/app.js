@@ -1189,7 +1189,7 @@ async function handleYoutubeImport(e) {
   
   el.sourcePlayer.style.display = 'none';
   el.processingDetails.style.display = 'flex';
-  el.processingStatusText.innerHTML = `Connecting &amp; downloading stream...<br><span style="font-size:12px; color:var(--text-muted);">High-speed extractor (720p HD)</span>`;
+  el.processingStatusText.innerHTML = `Connecting &amp; downloading stream...<br><span style="font-size:12px; color:var(--text-muted);">Ultra-res extractor (1080p Full HD / 4K)</span>`;
 
   try {
     const res = await fetch('/api/import', {
@@ -1304,7 +1304,7 @@ window.loadInstantGtaSample = async function() {
   
   el.sourcePlayer.style.display = 'none';
   el.processingDetails.style.display = 'flex';
-  el.processingStatusText.innerHTML = `Loading instant GTA 6 stream...<br><span style="font-size:12px; color:var(--text-muted);">Cloud Firewall Bypass (720p HD 60fps)</span>`;
+  el.processingStatusText.innerHTML = `Loading instant GTA 6 stream...<br><span style="font-size:12px; color:var(--text-muted);">Cloud Firewall Bypass (1080p Full HD 60fps)</span>`;
 
   try {
     const res = await fetch('/api/import', {

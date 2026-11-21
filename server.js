@@ -376,15 +376,17 @@ async function downloadYoutubeViaInvidious(url, videoPath) {
       let streamUrl = '';
       
       if (videoData.formatStreams && videoData.formatStreams.length > 0) {
-        // Find 720p or 360p combined video+audio stream
-        const bestStream = videoData.formatStreams.find(s => s.quality === 'hd720' || s.label === '720p') || 
+        // Prioritize pristine 1080p Full HD, 1440p/2160p or 720p combined video+audio stream
+        const bestStream = videoData.formatStreams.find(s => s.quality === 'hd1080' || s.label === '1080p' || s.quality === 'hd2160' || s.quality === 'hd1440') ||
+                           videoData.formatStreams.find(s => s.quality === 'hd720' || s.label === '720p') || 
                            videoData.formatStreams.find(s => s.quality === 'medium' || s.label === '360p') || 
                            videoData.formatStreams[0];
         streamUrl = bestStream.url;
       }
       
       if (!streamUrl && videoData.adaptiveFormats && videoData.adaptiveFormats.length > 0) {
-        const videoStream = videoData.adaptiveFormats.find(s => s.type.startsWith('video/') && (s.qualityLabel === '720p' || s.qualityLabel === '360p')) || 
+        const videoStream = videoData.adaptiveFormats.find(s => s.type.startsWith('video/') && (s.qualityLabel === '1080p' || s.qualityLabel === '1440p' || s.qualityLabel === '2160p')) || 
+                            videoData.adaptiveFormats.find(s => s.type.startsWith('video/') && (s.qualityLabel === '720p' || s.qualityLabel === '360p')) || 
                             videoData.adaptiveFormats.find(s => s.type.startsWith('video/'));
         if (videoStream) {
           streamUrl = videoStream.url;
@@ -472,8 +474,9 @@ async function downloadYoutubeViaPiped(url, videoPath) {
       const data = await res.json();
       if (!data || !data.videoStreams || data.videoStreams.length === 0) continue;
 
-      // Prefer combined video+audio streams, 720p or 1080p
-      const stream = data.videoStreams.find(s => (s.quality === '1080p' || s.quality === '720p') && !s.videoOnly) ||
+      // Prefer pristine 1080p Full HD, 1440p or 4K streams
+      const stream = data.videoStreams.find(s => (s.quality === '1080p' || s.quality === '1440p' || s.quality === '2160p') && !s.videoOnly) ||
+                     data.videoStreams.find(s => s.quality === '720p' && !s.videoOnly) ||
                      data.videoStreams.find(s => !s.videoOnly) ||
                      data.videoStreams[0];
 
@@ -515,7 +518,7 @@ async function downloadYoutubeViaCobalt(url, videoPath) {
       const res = await fetch(`${inst}/`, {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, videoQuality: '720' }),
+        body: JSON.stringify({ url, videoQuality: '1080' }),
         signal: AbortSignal.timeout(8000)
       });
       if (!res.ok) continue;
@@ -643,7 +646,7 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
   console.log('[Import Method 4] Trying TV Embedded & MWeb player client...');
   const attempt4 = await tryYtDlp([
     '--extractor-args', 'youtube:player_client=tv_embedded,web_creator,mweb,android_creator;player_skip=webpage,configs,js',
-    '-f', 'bestvideo[height<=2160]+bestaudio/best[height<=1080]/best[height<=720]/18/best',
+    '-f', 'bestvideo[height>=1080][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height>=1080]/best[height<=1080]/best',
     '--download-sections', isLive ? '*0-30' : '*0-900',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   ]);
@@ -655,7 +658,7 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
   const attempt5 = await tryYtDlp([
     '--impersonate', 'chrome',
     '--extractor-args', 'youtube:player_client=ios,mweb;player_skip=webpage,configs',
-    '-f', 'bestvideo[height<=2160]+bestaudio/best[height<=1080]/best[height<=720]/18/best',
+    '-f', 'bestvideo[height>=1080][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height>=1080]/best[height<=1080]/best',
     '--download-sections', isLive ? '*0-30' : '*0-600',
     '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
   ]);
@@ -667,7 +670,7 @@ async function downloadYoutubeWithFallbacks(url, relativeVideoPath, videoPath, i
   const attempt6 = await tryYtDlp([
     '--impersonate', 'chrome',
     '--extractor-args', 'youtube:player_client=android_creator,android;player_skip=webpage,configs,js',
-    '-f', 'bestvideo[height<=2160]+bestaudio/best[height<=1080]/best[height<=720]/18/best',
+    '-f', 'bestvideo[height>=1080][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height>=1080]/best[height<=1080]/best',
     '--download-sections', isLive ? '*0-30' : '*0-900',
     '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
   ]);

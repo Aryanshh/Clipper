@@ -138,7 +138,7 @@ class LiveStreamService {
           '--ffmpeg-location', safeFfmpegLocation,
           '--extractor-args', 'youtube:player_client=android,web',
           '-g',
-          '-f', 'best[height<=720]/18/best',
+          '-f', 'best[height>=1080][height<=2160]/best[height<=2160]/best',
           url
         ], { env: process.env, cwd: path.join(__dirname) });
         let stdout = '';
@@ -179,7 +179,7 @@ class LiveStreamService {
         '--no-check-certificate',
         '--ffmpeg-location', safeFfmpegLocation,
         '--extractor-args', 'youtube:player_client=android,web',
-        '-f', 'best[height<=720]/18/best',
+        '-f', 'bestvideo[height>=1080][height<=2160]+bestaudio/best[height>=1080]/best[height<=2160]/best',
         '--no-part',
         '--no-live-from-start',
         '-o', recordingPath,
@@ -203,7 +203,7 @@ class LiveStreamService {
           this.addEvent('YouTube cloud protection active: Routed to verified Live Action Broadcaster.');
           const simProc = spawn(safeFfmpegLocation, [
             '-y',
-            '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30',
+            '-f', 'lavfi', '-i', 'testsrc=size=1920x1080:rate=60',
             '-f', 'lavfi', '-i', 'sine=frequency=440:beep_factor=4:sample_rate=16000',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '128k',
