@@ -245,6 +245,10 @@ ${dialogueEvents.join('\n')}
     const { videoId, language, styleMode, cropMode, facecamPosition = 'bottom_right', manualClips, maxClips, quality, durationMode = '30-60', minDuration, maxDuration } = options;
     const startTime = batchState.startTime;
 
+    const is4K = quality === '4k' || quality === '2160p';
+    const targetW = is4K ? 2160 : 1080;
+    const targetH = is4K ? 3840 : 1920;
+
     try {
       updateBatch('analyzing', 'Locating video source and discovering viral moments...');
 
@@ -415,6 +419,7 @@ Return strictly JSON matching the schema.`;
       }
 
       const renderSemaphore = new RenderSemaphore(3);
+      const transcriptionSemaphore = new RenderSemaphore(1);
       const completedClips = [];
 
       const processClipWorker = async (clipData, index) => {
@@ -473,24 +478,16 @@ Return strictly JSON matching the schema.`;
           clipAudioPath
         ]);
 
-        // Stage 3: Concurrent Gemini Word-Level Transcription
+        // Stage 3: Rate-Limited Inline Gemini Word-Level Transcription
         workerState.stage = 'transcribing';
         workerState.progress = 45;
-        updateBatch('processing', `Worker ${index + 1}: Transcribing words with Gemini Flash...`);
+        updateBatch('processing', `Worker ${index + 1}: Transcribing words with Gemini AI...`);
 
         let captions = [];
-        const ai = this.getGeminiClient();
-        const audioUpload = await ai.files.upload({
-          file: clipAudioPath,
-          mimeType: 'audio/mp3'
-        });
-
+        await transcriptionSemaphore.acquire();
         try {
-          let state = await ai.files.get({ name: audioUpload.name });
-          while (state.state === 'PROCESSING') {
-            await new Promise(r => setTimeout(r, 1000));
-            state = await ai.files.get({ name: audioUpload.name });
-          }
+          const ai = this.getGeminiClient();
+          const audioBase64 = fs.readFileSync(clipAudioPath).toString('base64');
 
           let transcriptionPrompt = '';
           if (language === 'hi') {
@@ -505,7 +502,7 @@ Return strictly JSON matching the schema.`;
 
           const captionResp = await this.generateContentWithFallback(ai, {
             contents: [
-              { fileData: { fileUri: audioUpload.uri, mimeType: audioUpload.mimeType } },
+              { inlineData: { data: audioBase64, mimeType: 'audio/mp3' } },
               `${transcriptionPrompt} Return strictly JSON array matching schema.`
             ],
             config: {
@@ -533,7 +530,7 @@ Return strictly JSON matching the schema.`;
             { word: 'MOMENT', start: 1.5, end: 2.5 }
           ];
         } finally {
-          ai.files.delete({ name: audioUpload.name }).catch(() => {});
+          transcriptionSemaphore.release();
         }
 
         // Stage 4: Subtitle Styling & ASS Generation (Native Canvas Resolution)

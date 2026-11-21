@@ -3331,6 +3331,14 @@ async function startTurboWorkflow(videoId, language = 'auto', manualClips = null
     turboPollTimer = setInterval(async () => {
       try {
         const statusRes = await fetch(`/api/turbo/status/${batchId}`);
+        if (!statusRes.ok) {
+          clearInterval(turboPollTimer);
+          clearInterval(turboStopwatchInterval);
+          if (el.turboStatusHeadline) {
+            el.turboStatusHeadline.innerHTML = `<span style="color:#ef4444;">Batch disconnected or server restarted. Please retry.</span>`;
+          }
+          return;
+        }
         const statusData = await statusRes.json();
         if (!statusData.success || !statusData.status) return;
 
