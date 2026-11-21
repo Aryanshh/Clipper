@@ -1987,4 +1987,94 @@ input:checked + .slider:before {
   transition: all var(--transition-fast);
 }
 
+/* ---------------------------------------------------- */
+/* Studio Production Command Deck & Controls            */
+/* ---------------------------------------------------- */
+.studio-deck {
+  background: linear-gradient(180deg, rgba(20, 19, 29, 0.85) 0%, rgba(12, 11, 18, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+  padding: 16px 18px;
+  margin-top: 18px;
+}
+
+.studio-control-item label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-control-item select,
+.studio-control-item input {
+  transition: all var(--transition-fast);
+}
+
+.studio-control-item select:focus,
+.studio-control-item input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+  outline: none;
+}
+
+/* ---------------------------------------------------- */
+/* Precision Clip Trimmer & Quick Duration Chips        */
+/* ---------------------------------------------------- */
+.clip-trim-panel {
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.clip-trim-panel:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.btn-duration-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-duration-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn-duration-chip.active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(139, 92, 246, 0.3) 100%);
+  border-color: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+
+.btn-micro-step {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: var(--border-radius-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-micro-step:hover {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+}
+
 

@@ -205,7 +205,7 @@ ${dialogueEvents.join('\n')}
    * Main Turbo Batch Orchestrator
    * Produces multiple complete, transcribed, styled, and 9:16 rendered clips in parallel.
    */
-  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips = null, maxClips = 'auto', quality = '1080p', onProgress = null }) {
+  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips = null, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration = null, maxDuration = null, onProgress = null }) {
     const batchId = `turbo_${Date.now()}`;
     const startTime = Date.now();
 
@@ -237,11 +237,11 @@ ${dialogueEvents.join('\n')}
     };
 
     // Run pipeline asynchronously so caller gets batchId immediately if needed, or await for result
-    return this.runPipeline(batchState, { videoId, language, styleMode, cropMode, manualClips, maxClips }, updateBatch);
+    return this.runPipeline(batchState, { videoId, language, styleMode, cropMode, manualClips, maxClips, quality, durationMode, minDuration, maxDuration }, updateBatch);
   }
 
   async runPipeline(batchState, options, updateBatch) {
-    const { videoId, language, styleMode, cropMode, manualClips, maxClips } = options;
+    const { videoId, language, styleMode, cropMode, manualClips, maxClips, quality, durationMode = '30-60', minDuration, maxDuration } = options;
     const startTime = batchState.startTime;
 
     try {
@@ -289,8 +289,22 @@ ${dialogueEvents.join('\n')}
               fileState = await ai.files.get({ name: uploadResult.name });
             }
 
+            // Compute target duration bounds
+            let targetMin = 30;
+            let targetMax = 60;
+            if (durationMode === '15-30') {
+              targetMin = 15;
+              targetMax = 30;
+            } else if (durationMode === '60-90') {
+              targetMin = 60;
+              targetMax = 90;
+            } else if (durationMode === 'custom' || minDuration || maxDuration) {
+              targetMin = Math.max(10, parseInt(minDuration, 10) || 15);
+              targetMax = Math.max(targetMin + 5, parseInt(maxDuration, 10) || 60);
+            }
+
             const prompt = `Analyze this gaming video audio and identify ALL possible high-energy, exciting, funny, clutch, reaction, or viral moments suitable for YouTube Shorts, Instagram Reels, and TikTok (find as many distinct clips as possible, up to ${targetCount} clips).
-Each clip should be between 20 and 60 seconds long and capture an exciting gaming play, intense reaction, funny fail, clutch moment, or complete punchline.
+Each clip MUST be between ${targetMin} and ${targetMax} seconds long (focused on target duration of ${targetMin}s to ${targetMax}s) and capture an exciting gaming play, intense reaction, funny fail, clutch moment, or complete punchline.
 Ensure timestamps are non-overlapping. Rank them by virality score from highest to lowest.
 Return strictly JSON matching the schema.`;
 
@@ -333,9 +347,10 @@ Return strictly JSON matching the schema.`;
         } catch (discoverErr) {
           console.warn('[TurboBatch] Gemini discovery fallback activated:', discoverErr.message);
           viralClips = [];
+          const fbDuration = (durationMode === '15-30') ? 25 : ((durationMode === '60-90') ? 65 : 35);
           for (let i = 0; i < targetCount; i++) {
-            const startSec = i * 45;
-            const endSec = startSec + 35;
+            const startSec = i * (fbDuration + 8);
+            const endSec = startSec + fbDuration;
             viralClips.push({
               title: `EPIC GAMING HIGHLIGHT #${i + 1} 🔥`,
               start: `${Math.floor(startSec / 60)}:${String(startSec % 60).padStart(2, '0')}`,

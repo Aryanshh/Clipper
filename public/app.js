@@ -21,6 +21,11 @@ const state = {
   youtubePrivacy: 'public',
   autoUploadYoutube: localStorage.getItem('clipper_auto_upload_yt') === 'true',
   exportQuality: localStorage.getItem('clipper_export_quality') || '1080p',
+  clipDurationMode: localStorage.getItem('clipper_clip_duration_mode') || '30-60',
+  minDuration: parseFloat(localStorage.getItem('clipper_custom_min_duration')) || 15,
+  maxDuration: parseFloat(localStorage.getItem('clipper_custom_max_duration')) || 60,
+  editorTrimStart: 0,
+  editorTrimDuration: 30,
   currentExport: null
 };
 
@@ -185,7 +190,21 @@ const el = {
   // Video Resolution & Quality (1080p HD / 4K UHD)
   turboQualitySelect: document.getElementById('turbo-quality-select'),
   qualityButtons: document.querySelectorAll('.quality-btn'),
-  qualityDesc: document.getElementById('quality-desc')
+  qualityDesc: document.getElementById('quality-desc'),
+
+  // Clip Duration & Precision Trimmer
+  turboDurationSelect: document.getElementById('turbo-duration-select'),
+  customDurationRow: document.getElementById('custom-duration-row'),
+  customMinDuration: document.getElementById('custom-min-duration'),
+  customMaxDuration: document.getElementById('custom-max-duration'),
+  editorClipDurationBadge: document.getElementById('editor-clip-duration-badge'),
+  editorTrimStart: document.getElementById('editor-trim-start'),
+  editorTrimDuration: document.getElementById('editor-trim-duration'),
+  btnTrimStartMinus: document.getElementById('btn-trim-start-minus'),
+  btnTrimStartPlus: document.getElementById('btn-trim-start-plus'),
+  btnTrimLenMinus: document.getElementById('btn-trim-len-minus'),
+  btnTrimLenPlus: document.getElementById('btn-trim-len-plus'),
+  durationPresetChips: document.querySelectorAll('.btn-duration-chip')
 };
 
 let livePollingTimer = null;
@@ -478,6 +497,110 @@ function setupEventListeners() {
           ? 'Ultra-high bitrate 4K Ultra HD (2160x3840) vertical video. Optimal for flagship devices and maximum visual sharpness.'
           : 'Pristine 1080p Full HD (1080x1920) vertical video with Lanczos scaling. Fast rendering and sharp display across all mobile screens.';
       }
+    });
+  }
+
+  // Studio Deck Duration Select & Custom Range Handlers
+  if (el.turboDurationSelect) {
+    el.turboDurationSelect.value = state.clipDurationMode;
+    if (el.customDurationRow) {
+      el.customDurationRow.style.display = (state.clipDurationMode === 'custom') ? 'grid' : 'none';
+    }
+    el.turboDurationSelect.addEventListener('change', (e) => {
+      state.clipDurationMode = e.target.value;
+      localStorage.setItem('clipper_clip_duration_mode', state.clipDurationMode);
+      if (el.customDurationRow) {
+        el.customDurationRow.style.display = (state.clipDurationMode === 'custom') ? 'grid' : 'none';
+      }
+    });
+  }
+
+  if (el.customMinDuration) {
+    el.customMinDuration.value = state.minDuration;
+    el.customMinDuration.addEventListener('change', (e) => {
+      state.minDuration = Math.max(5, parseFloat(e.target.value) || 15);
+      localStorage.setItem('clipper_custom_min_duration', state.minDuration);
+    });
+  }
+  if (el.customMaxDuration) {
+    el.customMaxDuration.value = state.maxDuration;
+    el.customMaxDuration.addEventListener('change', (e) => {
+      state.maxDuration = Math.max(state.minDuration || 15, parseFloat(e.target.value) || 60);
+      localStorage.setItem('clipper_custom_max_duration', state.maxDuration);
+    });
+  }
+
+  // Precision Trimmer Controls in Editor
+  if (el.durationPresetChips && el.durationPresetChips.length > 0) {
+    el.durationPresetChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        el.durationPresetChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const preset = chip.dataset.preset;
+        if (preset === 'full') {
+          if (state.selectedClip) {
+            state.editorTrimStart = 0;
+            state.editorTrimDuration = Math.max(5, (state.selectedClip.end - state.selectedClip.start));
+          }
+        } else {
+          state.editorTrimDuration = parseFloat(preset) || 30;
+        }
+        updateTrimDisplay();
+      });
+    });
+  }
+
+  const updateTrimDisplay = () => {
+    if (el.editorTrimStart) el.editorTrimStart.value = (state.editorTrimStart || 0).toFixed(1);
+    if (el.editorTrimDuration) el.editorTrimDuration.value = (state.editorTrimDuration || 30).toFixed(1);
+    if (el.editorClipDurationBadge) {
+      el.editorClipDurationBadge.textContent = `⏱️ Duration: ${(state.editorTrimDuration || 30).toFixed(1)}s`;
+    }
+  };
+
+  if (el.btnTrimStartMinus) {
+    el.btnTrimStartMinus.addEventListener('click', () => {
+      state.editorTrimStart = Math.max(0, (state.editorTrimStart || 0) - 1.0);
+      updateTrimDisplay();
+      if (el.clipPlayer && !isNaN(el.clipPlayer.duration)) {
+        el.clipPlayer.currentTime = state.editorTrimStart;
+      }
+    });
+  }
+  if (el.btnTrimStartPlus) {
+    el.btnTrimStartPlus.addEventListener('click', () => {
+      state.editorTrimStart = (state.editorTrimStart || 0) + 1.0;
+      updateTrimDisplay();
+      if (el.clipPlayer && !isNaN(el.clipPlayer.duration)) {
+        el.clipPlayer.currentTime = state.editorTrimStart;
+      }
+    });
+  }
+  if (el.btnTrimLenMinus) {
+    el.btnTrimLenMinus.addEventListener('click', () => {
+      state.editorTrimDuration = Math.max(5, (state.editorTrimDuration || 30) - 1.0);
+      updateTrimDisplay();
+    });
+  }
+  if (el.btnTrimLenPlus) {
+    el.btnTrimLenPlus.addEventListener('click', () => {
+      state.editorTrimDuration = (state.editorTrimDuration || 30) + 1.0;
+      updateTrimDisplay();
+    });
+  }
+  if (el.editorTrimStart) {
+    el.editorTrimStart.addEventListener('change', (e) => {
+      state.editorTrimStart = Math.max(0, parseFloat(e.target.value) || 0);
+      updateTrimDisplay();
+      if (el.clipPlayer && !isNaN(el.clipPlayer.duration)) {
+        el.clipPlayer.currentTime = state.editorTrimStart;
+      }
+    });
+  }
+  if (el.editorTrimDuration) {
+    el.editorTrimDuration.addEventListener('change', (e) => {
+      state.editorTrimDuration = Math.max(5, parseFloat(e.target.value) || 30);
+      updateTrimDisplay();
     });
   }
 
@@ -1199,7 +1322,10 @@ async function runGeminiAnalysis() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         videoId: state.videoId,
-        language: state.transcriptionLanguage
+        language: state.transcriptionLanguage,
+        durationMode: state.clipDurationMode,
+        minDuration: state.minDuration,
+        maxDuration: state.maxDuration
       })
     });
 
@@ -1318,6 +1444,21 @@ async function handleClipSelect(clip) {
     el.clipPlayer.src = dataCut.clipUrl;
     el.clipPlayer.load();
     updateAspectRatioPreview();
+
+    // Initialize precision trimmer values for the selected clip
+    const rawClipDur = (clip.end - clip.start) || 30;
+    state.editorTrimStart = 0;
+    state.editorTrimDuration = Math.round(rawClipDur * 10) / 10;
+    if (el.editorTrimStart) el.editorTrimStart.value = '0.0';
+    if (el.editorTrimDuration) el.editorTrimDuration.value = state.editorTrimDuration.toFixed(1);
+    if (el.editorClipDurationBadge) {
+      el.editorClipDurationBadge.textContent = `⏱️ Duration: ${state.editorTrimDuration.toFixed(1)}s`;
+    }
+    if (el.durationPresetChips) {
+      el.durationPresetChips.forEach(c => {
+        c.classList.toggle('active', c.dataset.preset === 'full' || parseFloat(c.dataset.preset) === state.editorTrimDuration);
+      });
+    }
 
     // 2. Fetch word-level captions from Gemini
     el.transcriptTimeline.innerHTML = `
@@ -1560,7 +1701,9 @@ async function handleExport() {
         quality: state.exportQuality || '1080p',
         font: fontSelect ? fontSelect.value : 'arial',
         aiMirror: state.aiMirror,
-        hflip: state.hflip
+        hflip: state.hflip,
+        trimStart: state.editorTrimStart || 0,
+        trimDuration: state.editorTrimDuration || null
       })
     });
 
@@ -2375,7 +2518,10 @@ async function runTrimmedAnalysis() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         videoId: state.videoId,
-        language: state.transcriptionLanguage
+        language: state.transcriptionLanguage,
+        durationMode: state.clipDurationMode,
+        minDuration: state.minDuration,
+        maxDuration: state.maxDuration
       })
     });
 
@@ -3027,6 +3173,9 @@ async function startTurboWorkflow(videoId, language = 'auto', manualClips = null
         styleMode: 'all',
         cropMode: 'crop',
         quality: state.exportQuality || (el.turboQualitySelect ? el.turboQualitySelect.value : '1080p'),
+        durationMode: state.clipDurationMode || '30-60',
+        minDuration: state.minDuration,
+        maxDuration: state.maxDuration,
         maxClips,
         manualClips
       })

@@ -11,7 +11,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="/public/style.css">
+  <link rel="stylesheet" href="/public/style.css?v=2.5.0">
 </head>
 <body>
 
@@ -63,28 +63,48 @@
           </button>
         </div>
 
-        <!-- Turbo Multiprocessing Engine Toggle (Multi-Clip Gaming Stream Extraction) -->
-        <div class="turbo-toggle-container" style="padding: 16px 24px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: rgba(89, 73, 122, 0.12);">
-          <div class="toggle-info" style="flex: 1; min-width: 260px;">
-            <span style="font-weight: 700; font-size: 14.5px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-bolt-lightning" style="color: #f59e0b;"></i> Turbo Multiprocess: Multi-Clip Gaming Extraction
-              <span class="badge" style="background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color: #f59e0b; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px;">HIGH DENSITY</span>
-            </span>
-            <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">
-              Parallel fan-out: simultaneously discovers all viral gaming moments (kills, clutches, reactions), cuts, transcribes speech, highlights text with rotating creative styles (Hormozi, MrBeast, Fire Glow, Cyberpunk, Highlighter, TikTok, Minimalist), and burns 9:16 vertical video.
-            </p>
+        <!-- Unified Professional Studio Command Deck -->
+        <div class="studio-deck" style="padding: 18px 24px; border-bottom: 1px solid var(--panel-border); background: linear-gradient(180deg, rgba(20, 18, 30, 0.7) 0%, rgba(15, 14, 22, 0.9) 100%);">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-weight: 700; font-size: 14.5px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-sliders" style="color: #6366f1;"></i> Studio Production Controls
+              </span>
+              <span class="badge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid #6366f1; color: #a5b4fc; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px;">
+                <i class="fa-solid fa-bolt-lightning" style="color: #f59e0b; margin-right: 3px;"></i> TURBO MULTI-CLIP ACTIVE
+              </span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Turbo Multi-Clip Mode:</span>
+              <label class="switch" title="Toggle Turbo Multi-Clip Mode">
+                <input type="checkbox" id="turbo-mode-checkbox" checked>
+                <span class="slider round"></span>
+              </label>
+            </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label for="turbo-quality-select" style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Quality:</label>
-              <select id="turbo-quality-select" class="form-control" style="width: auto; padding: 5px 10px; font-size: 11.5px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
-                <option value="1080p" selected>💎 1080p Full HD</option>
-                <option value="4k">👑 4K Ultra HD</option>
+
+          <!-- Studio Control Grid (4 Responsive Columns) -->
+          <div class="studio-controls-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px;">
+            
+            <!-- 1. Clip Duration Control -->
+            <div class="studio-control-item" style="background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--panel-border);">
+              <label for="turbo-duration-select" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <i class="fa-solid fa-stopwatch" style="color: #f59e0b;"></i> Clip Duration:
+              </label>
+              <select id="turbo-duration-select" class="form-control" style="width: 100%; padding: 6px 10px; font-size: 12px; background: rgba(15,15,22,0.8); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+                <option value="15-30">⚡ 15s – 30s (Snappy / Shorts)</option>
+                <option value="30-60" selected>🔥 30s – 60s (Standard Viral)</option>
+                <option value="60-90">🎬 60s – 90s (Extended Story)</option>
+                <option value="custom">⚙️ Custom Duration Range...</option>
               </select>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label for="turbo-clip-count" style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Target:</label>
-              <select id="turbo-clip-count" class="form-control" style="width: auto; padding: 5px 12px; font-size: 12px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+
+            <!-- 2. Target Clips Target -->
+            <div class="studio-control-item" style="background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--panel-border);">
+              <label for="turbo-clip-count" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <i class="fa-solid fa-layer-group" style="color: #38bdf8;"></i> Target Clips:
+              </label>
+              <select id="turbo-clip-count" class="form-control" style="width: 100%; padding: 6px 10px; font-size: 12px; background: rgba(15,15,22,0.8); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
                 <option value="auto" selected>🔥 All Possible (Max Virality)</option>
                 <option value="4">4 Clips</option>
                 <option value="6">6 Clips</option>
@@ -93,32 +113,52 @@
                 <option value="12">12 Clips</option>
               </select>
             </div>
-            <label class="switch" title="Toggle Turbo Multiprocessing">
-              <input type="checkbox" id="turbo-mode-checkbox" checked>
-              <span class="slider round"></span>
-            </label>
+
+            <!-- 3. Export Video Resolution -->
+            <div class="studio-control-item" style="background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--panel-border);">
+              <label for="turbo-quality-select" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <i class="fa-solid fa-gem" style="color: #10b981;"></i> Video Resolution:
+              </label>
+              <select id="turbo-quality-select" class="form-control" style="width: 100%; padding: 6px 10px; font-size: 12px; background: rgba(15,15,22,0.8); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+                <option value="1080p" selected>💎 1080p Full HD (1080x1920)</option>
+                <option value="4k">👑 4K Ultra HD (2160x3840)</option>
+              </select>
+            </div>
+
+            <!-- 4. Language Selector -->
+            <div class="studio-control-item" style="background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--panel-border);">
+              <label for="transcription-lang" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <i class="fa-solid fa-language" style="color: #ec4899;"></i> Speech Language:
+              </label>
+              <select id="transcription-lang" class="form-control" style="width: 100%; padding: 6px 10px; font-size: 12px; background: rgba(15,15,22,0.8); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+                <option value="auto" selected>🌐 Auto (Hindi / English / Mixed)</option>
+                <option value="hi">🇮🇳 Hindi (हिंदी Devanagari)</option>
+                <option value="hinglish">🇮🇳 Hinglish (Hindi in Roman script)</option>
+                <option value="en">🇺🇸 English</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Custom Duration Range Row (Shown conditionally when 'custom' is selected) -->
+          <div id="custom-duration-row" style="display: none; margin-top: 10px; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px dashed var(--panel-border); border-radius: 6px; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <span style="font-size: 11.5px; color: var(--text-secondary);"><i class="fa-solid fa-arrows-left-right" style="color:#f59e0b; margin-right:4px;"></i> Custom Seconds:</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="custom-min-duration" style="font-size: 11px; color: var(--text-muted);">Min:</label>
+              <input type="number" id="custom-min-duration" min="5" max="120" value="15" style="width: 70px; padding: 4px 8px; font-size: 12px; background: rgba(0,0,0,0.6); border: 1px solid var(--panel-border); color: #fff; border-radius: 4px; text-align: center;">
+              <span style="font-size: 11px; color: var(--text-muted);">sec</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="custom-max-duration" style="font-size: 11px; color: var(--text-muted);">Max:</label>
+              <input type="number" id="custom-max-duration" min="10" max="180" value="45" style="width: 70px; padding: 4px 8px; font-size: 12px; background: rgba(0,0,0,0.6); border: 1px solid var(--panel-border); color: #fff; border-radius: 4px; text-align: center;">
+              <span style="font-size: 11px; color: var(--text-muted);">sec</span>
+            </div>
+            <span style="font-size: 11px; color: #10b981; margin-left: auto;">Gemini will target hooks strictly within this time window.</span>
           </div>
         </div>
 
         <!-- Autopilot Workflow Toggle -->
         <div class="autopilot-toggle-container" style="display: none;">
           <input type="checkbox" id="autopilot-checkbox">
-        </div>
-
-        <!-- Multilingual Transcription Language Selector (Hindi & English) -->
-        <div class="transcription-lang-container" style="padding: 14px 24px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; background: rgba(0,0,0,0.15);">
-          <div class="lang-info">
-            <span style="font-weight: 500; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-language" style="color: var(--primary-color);"></i> Transcription Language
-            </span>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 2px 0 0 0;">Transcribe in Hindi (हिंदी), English, Hinglish, or Auto-detect original speech.</p>
-          </div>
-          <select id="transcription-lang" class="style-select" style="max-width: 220px; padding: 8px 12px; font-size: 13px;">
-            <option value="auto" selected>🌐 Auto (Hindi / English / Mixed)</option>
-            <option value="hi">🇮🇳 Hindi (हिंदी Devanagari)</option>
-            <option value="hinglish">🇮🇳 Hinglish (Hindi in Roman script)</option>
-            <option value="en">🇺🇸 English</option>
-          </select>
         </div>
 
         <div class="tab-content active" id="tab-youtube">
@@ -471,6 +511,48 @@
             <div class="video-container" id="clip-player-container" style="position: relative;">
               <video id="clip-player" controls preload="metadata"></video>
               <div id="subtitle-preview-overlay" class="subtitle-preview-overlay"></div>
+            </div>
+
+            <!-- Precision Clip Trimmer & Duration Control -->
+            <div class="clip-trim-panel" style="margin-top: 14px; padding: 12px 14px; background: rgba(0,0,0,0.35); border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-scissors" style="color: var(--secondary-color);"></i> Precision Trim & Duration
+                </label>
+                <span id="editor-clip-duration-badge" class="badge" style="background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); color: #818cf8; font-size: 11px; padding: 2px 8px; border-radius: 9999px;">
+                  ⏱️ Duration: 30.0s
+                </span>
+              </div>
+              
+              <!-- Quick Duration Preset Chips -->
+              <div class="quick-duration-chips" style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
+                <button type="button" class="btn-duration-chip" data-preset="15">15s Snappy</button>
+                <button type="button" class="btn-duration-chip active" data-preset="30">30s Standard</button>
+                <button type="button" class="btn-duration-chip" data-preset="45">45s Punchy</button>
+                <button type="button" class="btn-duration-chip" data-preset="60">60s Max</button>
+                <button type="button" class="btn-duration-chip" data-preset="full">Full Clip</button>
+              </div>
+
+              <!-- Start / End Micro Adjusters -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                  <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Start Offset</span>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btn-trim-start-minus" class="btn-micro-step">-1s</button>
+                    <input type="number" id="editor-trim-start" min="0" step="0.5" value="0.0" style="width: 100%; text-align: center; font-size: 12px; padding: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                    <button type="button" id="btn-trim-start-plus" class="btn-micro-step">+1s</button>
+                  </div>
+                </div>
+
+                <div>
+                  <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target Length</span>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btn-trim-len-minus" class="btn-micro-step">-1s</button>
+                    <input type="number" id="editor-trim-duration" min="5" max="180" step="0.5" value="30.0" style="width: 100%; text-align: center; font-size: 12px; padding: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                    <button type="button" id="btn-trim-len-plus" class="btn-micro-step">+1s</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -886,6 +968,6 @@
   </div>
 
   <!-- Custom script -->
-  <script src="/public/app.js?v=2.4.0"></script>
+  <script src="/public/app.js?v=2.5.0"></script>
 </body>
 </html>
