@@ -205,7 +205,7 @@ ${dialogueEvents.join('\n')}
    * Main Turbo Batch Orchestrator
    * Produces multiple complete, transcribed, styled, and 9:16 rendered clips in parallel.
    */
-  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', manualClips = null, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration = null, maxDuration = null, onProgress = null }) {
+  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', facecamPosition = 'bottom_right', manualClips = null, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration = null, maxDuration = null, onProgress = null }) {
     const batchId = `turbo_${Date.now()}`;
     const startTime = Date.now();
 
@@ -237,11 +237,11 @@ ${dialogueEvents.join('\n')}
     };
 
     // Run pipeline asynchronously so caller gets batchId immediately if needed, or await for result
-    return this.runPipeline(batchState, { videoId, language, styleMode, cropMode, manualClips, maxClips, quality, durationMode, minDuration, maxDuration }, updateBatch);
+    return this.runPipeline(batchState, { videoId, language, styleMode, cropMode, facecamPosition, manualClips, maxClips, quality, durationMode, minDuration, maxDuration }, updateBatch);
   }
 
   async runPipeline(batchState, options, updateBatch) {
-    const { videoId, language, styleMode, cropMode, manualClips, maxClips, quality, durationMode = '30-60', minDuration, maxDuration } = options;
+    const { videoId, language, styleMode, cropMode, facecamPosition = 'bottom_right', manualClips, maxClips, quality, durationMode = '30-60', minDuration, maxDuration } = options;
     const startTime = batchState.startTime;
 
     try {
@@ -554,7 +554,30 @@ Return strictly JSON matching the schema.`;
         const activeCropMode = cropMode || 'crop';
         let filterComplex = '';
 
-        if (activeCropMode === 'fit_blur') {
+        if (activeCropMode === 'reaction_split') {
+          const topH = Math.round(targetH * 0.5625);
+          const botH = targetH - topH;
+          const dividerH = is4K ? 8 : 4;
+          const dividerY = topH - Math.round(dividerH / 2);
+
+          let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
+          if (facecamPosition === 'bottom_left') {
+            camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
+          } else if (facecamPosition === 'top_right') {
+            camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
+          } else if (facecamPosition === 'top_left') {
+            camCrop = 'crop=iw*0.34:ih*0.42:0:0';
+          } else if (facecamPosition === 'center') {
+            camCrop = 'crop=iw*0.40:ih*0.45:iw*0.30:ih*0.28';
+          }
+
+          const gameCrop = 'crop=ih:ih:(iw-ih)/2:0';
+          filterComplex = `split=2[g_src][c_src];` +
+            `[g_src]${gameCrop},scale=${targetW}:${topH}:flags=lanczos[game_top];` +
+            `[c_src]${camCrop},scale=${targetW}:${botH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${targetW}:${botH}[cam_bot];` +
+            `[game_top][cam_bot]vstack=inputs=2,drawbox=y=${dividerY}:color=0x6366f1@0.9:width=iw:height=${dividerH}:t=fill[split_base];` +
+            `[split_base]subtitles=${assFilename}`;
+        } else if (activeCropMode === 'fit_blur') {
           const bgFilter = `[bg_src]scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH},boxblur=25:5[bg]`;
           const fgFilter = `[fg_src]scale=${targetW}:-2:flags=lanczos[fg]`;
           filterComplex = `split=2[bg_src][fg_src];${bgFilter};${fgFilter};[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;
@@ -565,10 +588,18 @@ Return strictly JSON matching the schema.`;
         // Acquire render concurrency slot (max 3 simultaneous renders)
         await renderSemaphore.acquire();
         try {
-          await this.runFFmpeg([
-            '-y',
-            '-i', clipPath,
-            '-vf', filterComplex,
+          const isComplex = filterComplex.includes(';') || activeCropMode === 'reaction_split' || activeCropMode === 'fit_blur';
+          const ffmpegArgs = ['-y', '-i', clipPath];
+          if (isComplex) {
+            ffmpegArgs.push(
+              '-filter_complex', `[0:v]${filterComplex}[v_out]`,
+              '-map', '[v_out]',
+              '-map', '0:a?'
+            );
+          } else {
+            ffmpegArgs.push('-vf', filterComplex);
+          }
+          ffmpegArgs.push(
             '-c:v', 'libx264',
             '-crf', is4K ? '16' : '18',
             '-preset', 'fast',
@@ -578,7 +609,9 @@ Return strictly JSON matching the schema.`;
             '-b:a', is4K ? '320k' : '192k',
             '-strict', '-2',
             `../exports/${exportFilename}`
-          ], path.join(__dirname, 'clips'));
+          );
+
+          await this.runFFmpeg(ffmpegArgs, path.join(__dirname, 'clips'));
         } finally {
           renderSemaphore.release();
         }

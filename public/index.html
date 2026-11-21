@@ -11,7 +11,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="/public/style.css?v=2.5.0">
+  <link rel="stylesheet" href="/public/style.css?v=2.6.0">
 </head>
 <body>
 
@@ -137,6 +137,36 @@
                 <option value="en">🇺🇸 English</option>
               </select>
             </div>
+
+            <!-- 5. Video Layout & Facecam Mode -->
+            <div class="studio-control-item" style="background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--panel-border);">
+              <label for="studio-crop-mode" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <i class="fa-solid fa-gamepad" style="color: #6366f1;"></i> Video Layout &amp; Format:
+              </label>
+              <select id="studio-crop-mode" class="form-control" style="width: 100%; padding: 6px 10px; font-size: 12px; background: rgba(15,15,22,0.8); border: 1px solid var(--panel-border); color: #fff; border-radius: 6px; cursor: pointer; outline: none;">
+                <option value="reaction_split" selected>🎮🎙️ Reaction Split (Game Top + Facecam Below)</option>
+                <option value="crop">📱 9:16 Center Action Crop</option>
+                <option value="fit_blur">🌫️ 9:16 Fit &amp; Blur Background</option>
+                <option value="original">🖥️ 16:9 Original Widescreen</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Reaction Split Streamer Facecam Location Row (Shown when reaction_split active) -->
+          <div id="studio-facecam-row" style="display: flex; margin-top: 10px; padding: 10px 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <span style="font-size: 11.5px; font-weight: 600; color: #c7d2fe; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-video" style="color: #818cf8;"></i> Streamer Facecam Location in Original Stream:
+            </span>
+            <select id="studio-facecam-pos" style="padding: 4px 10px; font-size: 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(99,102,241,0.4); color: #fff; border-radius: 4px; cursor: pointer; outline: none;">
+              <option value="bottom_right" selected>↘ Bottom-Right Corner (Universal Gaming Standard)</option>
+              <option value="bottom_left">↙ Bottom-Left Corner</option>
+              <option value="top_right">↗ Top-Right Corner</option>
+              <option value="top_left">↖ Top-Left Corner</option>
+              <option value="center">🎯 Center Webcam Box</option>
+            </select>
+            <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;">
+              Auto-stacks GTA 6 game action on top with live streamer reaction below + synchronized subtitles.
+            </span>
           </div>
 
           <!-- Custom Duration Range Row (Shown conditionally when 'custom' is selected) -->
@@ -309,8 +339,21 @@
                   <i class="fa-solid fa-mobile-screen"></i> Output Aspect Ratio
                 </label>
                 <select id="live-crop-mode" class="style-select" style="width: 100%;">
-                  <option value="crop" selected>9:16 Center Crop</option>
-                  <option value="fit_blur">9:16 Fit & Blur Background</option>
+                  <option value="reaction_split" selected>🎮🎙️ Reaction Split (Game Top + Facecam Below)</option>
+                  <option value="crop">9:16 Center Crop</option>
+                  <option value="fit_blur">9:16 Fit &amp; Blur Background</option>
+                </select>
+              </div>
+
+              <div id="live-facecam-container">
+                <label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">
+                  <i class="fa-solid fa-video"></i> Streamer Facecam Position
+                </label>
+                <select id="live-facecam-pos" class="style-select" style="width: 100%;">
+                  <option value="bottom_right" selected>↘ Bottom-Right Corner</option>
+                  <option value="bottom_left">↙ Bottom-Left Corner</option>
+                  <option value="top_right">↗ Top-Right Corner</option>
+                  <option value="top_left">↖ Top-Left Corner</option>
                 </select>
               </div>
             </div>
@@ -511,6 +554,25 @@
             <div class="video-container" id="clip-player-container" style="position: relative;">
               <video id="clip-player" controls preload="metadata"></video>
               <div id="subtitle-preview-overlay" class="subtitle-preview-overlay"></div>
+              
+              <!-- Reaction Split-Screen Layout Guide Overlay -->
+              <div id="reaction-split-guide" style="display: none; position: absolute; inset: 0; pointer-events: none; z-index: 5; flex-direction: column; justify-content: space-between;">
+                <div style="padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);">
+                  <span style="background: rgba(99, 102, 241, 0.9); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    🎮 GTA 6 Gameplay (Top 56%)
+                  </span>
+                </div>
+                <!-- Glowing Split Divider Indicator -->
+                <div style="position: absolute; top: 56.25%; left: 0; right: 0; height: 3px; background: #6366f1; box-shadow: 0 0 10px #6366f1; transform: translateY(-50%);"></div>
+                <div style="padding: 8px 12px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%);">
+                  <span style="background: rgba(236, 72, 153, 0.9); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    🎙️ Streamer Reaction (Bottom 44%)
+                  </span>
+                  <span id="guide-facecam-pos-label" style="background: rgba(0,0,0,0.75); color: #f59e0b; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;">
+                    ↘ Bottom-Right
+                  </span>
+                </div>
+              </div>
             </div>
 
             <!-- Precision Clip Trimmer & Duration Control -->
@@ -632,17 +694,36 @@
             </div>
 
             <div class="style-group">
-              <label class="group-label">Output Aspect Ratio</label>
-              <div class="ratio-selectors">
-                <button class="ratio-btn" data-ratio="original">
-                  <i class="fa-solid fa-expand"></i> Original
+              <label class="group-label">Output Aspect Ratio &amp; Layout</label>
+              <div class="ratio-selectors" style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));">
+                <button type="button" class="ratio-btn active" data-ratio="reaction_split" title="Game on top, Streamer Reaction Facecam on bottom">
+                  <i class="fa-solid fa-gamepad" style="color:#6366f1;"></i> 9:16 Reaction Split
                 </button>
-                <button class="ratio-btn active" data-ratio="crop">
+                <button type="button" class="ratio-btn" data-ratio="crop">
                   <i class="fa-solid fa-crop"></i> Center Crop
                 </button>
-                <button class="ratio-btn" data-ratio="fit_blur">
-                  <i class="fa-solid fa-circle-half-stroke"></i> Fit & Blur
+                <button type="button" class="ratio-btn" data-ratio="fit_blur">
+                  <i class="fa-solid fa-circle-half-stroke"></i> Fit &amp; Blur
                 </button>
+                <button type="button" class="ratio-btn" data-ratio="original">
+                  <i class="fa-solid fa-expand"></i> 16:9 Full
+                </button>
+              </div>
+
+              <!-- Interactive Facecam Corner Position Selector (Active for reaction_split) -->
+              <div id="editor-facecam-config" style="margin-top: 10px; padding: 10px 12px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: var(--border-radius-sm);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span style="font-size: 11.5px; font-weight: 600; color: #c7d2fe; display: flex; align-items: center; gap: 5px;">
+                    <i class="fa-solid fa-video" style="color: #818cf8;"></i> Streamer Webcam Corner:
+                  </span>
+                  <span style="font-size: 10.5px; color: var(--text-muted);">GTA 6 Above • Reaction Below</span>
+                </div>
+                <div class="facecam-pos-selectors" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                  <button type="button" class="btn-facecam-pos active" data-pos="bottom_right" title="Streamer webcam is in bottom-right corner">↘ Btm Right</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="bottom_left" title="Streamer webcam is in bottom-left corner">↙ Btm Left</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="top_right" title="Streamer webcam is in top-right corner">↗ Top Right</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="top_left" title="Streamer webcam is in top-left corner">↖ Top Left</button>
+                </div>
               </div>
             </div>
 
@@ -968,6 +1049,6 @@
   </div>
 
   <!-- Custom script -->
-  <script src="/public/app.js?v=2.5.0"></script>
+  <script src="/public/app.js?v=2.6.0"></script>
 </body>
 </html>

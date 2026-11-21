@@ -8,7 +8,8 @@ const state = {
   captions: [],
   subtitlePreset: 'tiktok',
   subtitleFont: 'the_bold_font',
-  aspectRatio: 'crop',
+  aspectRatio: localStorage.getItem('clipper_crop_mode') || 'reaction_split',
+  facecamPosition: localStorage.getItem('clipper_facecam_pos') || 'bottom_right',
   editingWordIndex: null,
   editingSentenceIndex: null,
   aiMirror: false,
@@ -204,7 +205,18 @@ const el = {
   btnTrimStartPlus: document.getElementById('btn-trim-start-plus'),
   btnTrimLenMinus: document.getElementById('btn-trim-len-minus'),
   btnTrimLenPlus: document.getElementById('btn-trim-len-plus'),
-  durationPresetChips: document.querySelectorAll('.btn-duration-chip')
+  durationPresetChips: document.querySelectorAll('.btn-duration-chip'),
+
+  // Reaction Split & Facecam Controls
+  studioCropMode: document.getElementById('studio-crop-mode'),
+  studioFacecamRow: document.getElementById('studio-facecam-row'),
+  studioFacecamPos: document.getElementById('studio-facecam-pos'),
+  liveFacecamContainer: document.getElementById('live-facecam-container'),
+  liveFacecamPos: document.getElementById('live-facecam-pos'),
+  editorFacecamConfig: document.getElementById('editor-facecam-config'),
+  btnFacecamPosList: document.querySelectorAll('.btn-facecam-pos'),
+  reactionSplitGuide: document.getElementById('reaction-split-guide'),
+  guideFacecamPosLabel: document.getElementById('guide-facecam-pos-label')
 };
 
 let livePollingTimer = null;
@@ -453,15 +465,55 @@ function setupEventListeners() {
     });
   }
 
-  // Aspect ratio crop toggle
+  // Aspect ratio & Reaction Split layout toggle
   el.ratioBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.ratio === state.aspectRatio);
     btn.addEventListener('click', () => {
       el.ratioBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.aspectRatio = btn.dataset.ratio;
+      localStorage.setItem('clipper_crop_mode', state.aspectRatio);
+      if (el.studioCropMode) el.studioCropMode.value = state.aspectRatio;
       updateAspectRatioPreview();
     });
   });
+
+  // Studio Deck Crop Mode and Facecam Position
+  if (el.studioCropMode) {
+    el.studioCropMode.value = state.aspectRatio;
+    if (el.studioFacecamRow) {
+      el.studioFacecamRow.style.display = (state.aspectRatio === 'reaction_split') ? 'flex' : 'none';
+    }
+    el.studioCropMode.addEventListener('change', (e) => {
+      state.aspectRatio = e.target.value;
+      localStorage.setItem('clipper_crop_mode', state.aspectRatio);
+      updateAspectRatioPreview();
+    });
+  }
+
+  if (el.studioFacecamPos) {
+    el.studioFacecamPos.value = state.facecamPosition;
+    el.studioFacecamPos.addEventListener('change', (e) => {
+      state.facecamPosition = e.target.value;
+      localStorage.setItem('clipper_facecam_pos', state.facecamPosition);
+      updateAspectRatioPreview();
+    });
+  }
+
+  // Editor Facecam Position buttons
+  if (el.btnFacecamPosList) {
+    el.btnFacecamPosList.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.pos === state.facecamPosition);
+      btn.addEventListener('click', () => {
+        el.btnFacecamPosList.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.facecamPosition = btn.dataset.pos;
+        localStorage.setItem('clipper_facecam_pos', state.facecamPosition);
+        if (el.studioFacecamPos) el.studioFacecamPos.value = state.facecamPosition;
+        updateAspectRatioPreview();
+      });
+    });
+  }
 
   // Video Resolution & Quality Selection (1080p HD / 4K UHD)
   if (el.qualityButtons && el.qualityButtons.length > 0) {
@@ -1698,6 +1750,7 @@ async function handleExport() {
         style: state.subtitlePreset,
         crop: state.aspectRatio === 'crop',
         cropMode: state.aspectRatio,
+        facecamPosition: state.facecamPosition || 'bottom_right',
         quality: state.exportQuality || '1080p',
         font: fontSelect ? fontSelect.value : 'arial',
         aiMirror: state.aiMirror,
@@ -1718,7 +1771,7 @@ async function handleExport() {
     // Load exported video in Result Screen
     showSection(el.secExportResult);
     
-    if (state.aspectRatio === 'crop' || state.aspectRatio === 'fit_blur') {
+    if (state.aspectRatio === 'crop' || state.aspectRatio === 'fit_blur' || state.aspectRatio === 'reaction_split') {
       el.exportPreviewContainer.classList.remove('original-ratio');
     } else {
       el.exportPreviewContainer.classList.add('original-ratio');
@@ -1764,10 +1817,44 @@ async function handleExport() {
 function updateAspectRatioPreview() {
   const container = document.getElementById('clip-player-container');
   if (!container) return;
-  if (state.aspectRatio === 'crop' || state.aspectRatio === 'fit_blur') {
+
+  const isVertical = (state.aspectRatio === 'reaction_split' || state.aspectRatio === 'crop' || state.aspectRatio === 'fit_blur');
+  if (isVertical) {
     container.classList.add('crop-9-16-active');
   } else {
     container.classList.remove('crop-9-16-active');
+  }
+
+  // Guide overlay and facecam config panel for Reaction Split
+  if (el.reactionSplitGuide) {
+    el.reactionSplitGuide.style.display = (state.aspectRatio === 'reaction_split') ? 'flex' : 'none';
+  }
+  if (el.editorFacecamConfig) {
+    el.editorFacecamConfig.style.display = (state.aspectRatio === 'reaction_split') ? 'block' : 'none';
+  }
+  if (el.guideFacecamPosLabel) {
+    const labels = {
+      'bottom_right': '↘ Bottom-Right',
+      'bottom_left': '↙ Bottom-Left',
+      'top_right': '↗ Top-Right',
+      'top_left': '↖ Top-Left',
+      'center': '🎯 Center'
+    };
+    el.guideFacecamPosLabel.textContent = labels[state.facecamPosition] || '↘ Bottom-Right';
+  }
+
+  // Sync active states on ratio buttons
+  if (el.ratioBtns) {
+    el.ratioBtns.forEach(b => {
+      b.classList.toggle('active', b.dataset.ratio === state.aspectRatio);
+    });
+  }
+  // Sync studio crop mode select
+  if (el.studioCropMode) {
+    el.studioCropMode.value = state.aspectRatio;
+  }
+  if (el.studioFacecamRow) {
+    el.studioFacecamRow.style.display = (state.aspectRatio === 'reaction_split') ? 'flex' : 'none';
   }
 }
 
@@ -2579,7 +2666,8 @@ async function handleLiveCaptureStart(e) {
 
   const sensitivity = parseInt(el.liveSensitivity.value, 10) || 65;
   const style = el.liveStyle.value || 'tiktok';
-  const cropMode = el.liveCropMode.value || 'crop';
+  const cropMode = el.liveCropMode ? el.liveCropMode.value : (state.aspectRatio || 'reaction_split');
+  const facecamPosition = (el.liveFacecamPos && el.liveFacecamPos.value) || state.facecamPosition || 'bottom_right';
 
   const originalBtnText = el.btnStartLive.innerHTML;
   el.btnStartLive.disabled = true;
@@ -2589,7 +2677,7 @@ async function handleLiveCaptureStart(e) {
     const res = await fetch('/api/live/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, sensitivity, style, cropMode })
+      body: JSON.stringify({ url, sensitivity, style, cropMode, facecamPosition })
     });
 
     const data = await res.json();
@@ -3171,7 +3259,8 @@ async function startTurboWorkflow(videoId, language = 'auto', manualClips = null
         videoId,
         language: lang,
         styleMode: 'all',
-        cropMode: 'crop',
+        cropMode: state.aspectRatio || 'reaction_split',
+        facecamPosition: state.facecamPosition || 'bottom_right',
         quality: state.exportQuality || (el.turboQualitySelect ? el.turboQualitySelect.value : '1080p'),
         durationMode: state.clipDurationMode || '30-60',
         minDuration: state.minDuration,

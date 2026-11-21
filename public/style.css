@@ -2077,4 +2077,47 @@ input:checked + .slider:before {
   border-color: var(--primary-color);
 }
 
+/* ---------------------------------------------------- */
+/* Streamer Reaction Split-Screen Controls & Layout     */
+/* ---------------------------------------------------- */
+.btn-facecam-pos {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: var(--border-radius-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.btn-facecam-pos:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.btn-facecam-pos.active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(139, 92, 246, 0.3) 100%);
+  border-color: #6366f1;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.35);
+}
+
+#reaction-split-guide {
+  transition: opacity var(--transition-fast);
+}
+
+.crop-9-16-active {
+  aspect-ratio: 9/16 !important;
+  max-height: 560px !important;
+  margin: 0 auto;
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+}
+
 
