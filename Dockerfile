@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install modern yt-dlp with curl-cffi browser TLS impersonation, urllib3 and updated certifi
-RUN pip3 install --no-cache-dir --break-system-packages -U "yt-dlp[default,curl-cffi]" certifi urllib3
+# Install modern yt-dlp with curl-cffi browser TLS impersonation, opencv-python-headless for AI face detection, urllib3 and certifi
+RUN pip3 install --no-cache-dir --break-system-packages -U "yt-dlp[default,curl-cffi]" certifi urllib3 opencv-python-headless numpy
 
 # Set up non-root directory using the image's pre-configured node user (UID 1000)
 WORKDIR /home/node/app

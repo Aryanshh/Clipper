@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const faceDetectionService = require('./faceDetectionService');
 
 class TurboBatchService {
   constructor(deps) {
@@ -555,18 +556,35 @@ Return strictly JSON matching the schema.`;
         let filterComplex = '';
 
         if (activeCropMode === 'reaction_split') {
-          const topH = Math.round(targetH * 0.5625);
+          // 65/35 Split: 1248px top gameplay, 672px bottom reaction on 1080p
+          const topH = Math.round(targetH * 0.65);
           const botH = targetH - topH;
           const dividerH = is4K ? 8 : 4;
           const dividerY = topH - Math.round(dividerH / 2);
 
           let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
-          if (facecamPosition === 'bottom_left') {
+          if (facecamPosition === 'ai_auto' || !facecamPosition) {
+            try {
+              const aiResult = await faceDetectionService.detect(clipPath);
+              if (aiResult && aiResult.camCrop) {
+                camCrop = aiResult.camCrop;
+                console.log(`[Turbo] AI Facecam Detection applied for clip ${index}: ${aiResult.facecamPosition} (${camCrop})`);
+              }
+            } catch (aiErr) {
+              console.warn('[Turbo] AI Facecam Detection notice:', aiErr.message);
+            }
+          } else if (facecamPosition === 'bottom_left') {
             camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
+          } else if (facecamPosition === 'bottom_right') {
+            camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
           } else if (facecamPosition === 'top_right') {
             camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
           } else if (facecamPosition === 'top_left') {
             camCrop = 'crop=iw*0.34:ih*0.42:0:0';
+          } else if (facecamPosition === 'middle_left') {
+            camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.29';
+          } else if (facecamPosition === 'middle_right') {
+            camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.29';
           } else if (facecamPosition === 'center') {
             camCrop = 'crop=iw*0.40:ih*0.45:iw*0.30:ih*0.28';
           }

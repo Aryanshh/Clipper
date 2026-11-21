@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
 const { Readable } = require('stream');
+const faceDetectionService = require('./faceDetectionService');
 
 class LiveStreamService {
   constructor(deps) {
@@ -517,9 +518,16 @@ Respond ONLY in valid JSON with this exact schema:
       this.addEvent(`Rendering 9:16 vertical clip with creative subtitles...`);
       let cropFilter = '';
       if (stream.cropMode === 'reaction_split') {
-        const facecamPos = stream.facecamPosition || 'bottom_right';
+        const facecamPos = stream.facecamPosition || 'ai_auto';
         let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
-        if (facecamPos === 'bottom_left') {
+        if (facecamPos === 'ai_auto' || !facecamPos) {
+          try {
+            const aiResult = await faceDetectionService.detect(clipFilename);
+            if (aiResult && aiResult.camCrop) {
+              camCrop = aiResult.camCrop;
+            }
+          } catch (e) {}
+        } else if (facecamPos === 'bottom_left') {
           camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
         } else if (facecamPos === 'top_right') {
           camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
@@ -527,9 +535,9 @@ Respond ONLY in valid JSON with this exact schema:
           camCrop = 'crop=iw*0.34:ih*0.42:0:0';
         }
         cropFilter = `split=2[g_src][c_src];` +
-          `[g_src]crop=ih:ih:(iw-ih)/2:0,scale=1080:1080:flags=lanczos[game_top];` +
-          `[c_src]${camCrop},scale=1080:840:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:840[cam_bot];` +
-          `[game_top][cam_bot]vstack=inputs=2,drawbox=y=1078:color=0x6366f1@0.9:width=iw:height=4:t=fill[split_base];` +
+          `[g_src]crop=ih:ih:(iw-ih)/2:0,scale=1080:1248:flags=lanczos[game_top];` +
+          `[c_src]${camCrop},scale=1080:672:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:672[cam_bot];` +
+          `[game_top][cam_bot]vstack=inputs=2,drawbox=y=1246:color=0x6366f1@0.9:width=iw:height=4:t=fill[split_base];` +
           `[split_base]subtitles=${assFilename}`;
       } else if (stream.cropMode === 'fit_blur') {
         cropFilter = `split=2[bg_src][fg_src];[bg_src]scale=2*trunc(ih*9/32):2*trunc(ih/2):force_original_aspect_ratio=increase,crop=2*trunc(ih*9/32):2*trunc(ih/2),boxblur=20:5[bg];[fg_src]scale=2*trunc(ih*9/32):-2[fg];[bg][fg]overlay=0:(main_h-overlay_h)/2,subtitles=${assFilename}`;

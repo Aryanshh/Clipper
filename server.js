@@ -24,6 +24,7 @@ if (!process.env.PATH.includes(ffmpegDir)) {
 const { GoogleGenAI } = require('@google/genai');
 const youtubeService = require('./youtubeService');
 const YoutubeUploadService = require('./youtubeUploadService');
+const faceDetectionService = require('./faceDetectionService');
 
 // Crash prevention handlers for background tasks & streams
 process.on('unhandledRejection', (reason, promise) => {
@@ -1261,6 +1262,36 @@ app.post('/api/captions', async (req, res) => {
 });
 
 // ----------------------------------------------------
+// 5.5 AI Streamer Face Detection Endpoint
+// ----------------------------------------------------
+app.post('/api/detect-facecam', async (req, res) => {
+  try {
+    const { videoId, clipFilename } = req.body;
+    let targetFile = null;
+
+    if (clipFilename) {
+      const p1 = path.join(__dirname, 'clips', clipFilename);
+      const p2 = path.join(__dirname, 'downloads', clipFilename);
+      if (fs.existsSync(p1)) targetFile = p1;
+      else if (fs.existsSync(p2)) targetFile = p2;
+    } else if (videoId) {
+      const p = path.join(__dirname, 'downloads', `${videoId}.mp4`);
+      if (fs.existsSync(p)) targetFile = p;
+    }
+
+    if (!targetFile) {
+      return res.status(404).json({ error: 'Video or clip file not found for face detection.' });
+    }
+
+    const result = await faceDetectionService.detect(targetFile);
+    res.json(result);
+  } catch (err) {
+    console.error('Face detection endpoint error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
 // 6. Subtitle Burn-In and Export Endpoint
 // ----------------------------------------------------
 app.post('/api/export', async (req, res) => {
@@ -1491,20 +1522,36 @@ ${dialogueEvents.join('\n')}
     let filterComplex = '';
     
     if (activeCropMode === 'reaction_split') {
-      // 9:16 Streamer Reaction Split: Top 56% Gameplay, Bottom 44% Streamer Reaction Facecam
-      const topH = Math.round(targetH * 0.5625); // 1080 on 1080p, 2160 on 4K
-      const botH = targetH - topH;              // 840 on 1080p, 1680 on 4K
+      // 9:16 Streamer Reaction Split: Top 65% Gameplay, Bottom 35% Streamer Reaction Facecam
+      const topH = Math.round(targetH * 0.65); // 1248 on 1080p, 2496 on 4K
+      const botH = targetH - topH;              // 672 on 1080p, 1344 on 4K
       const dividerH = is4K ? 8 : 4;
       const dividerY = topH - Math.round(dividerH / 2);
 
-      // Extract streamer webcam based on corner location in the 16:9 stream
-      let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58'; // Default: bottom_right
-      if (facecamPosition === 'bottom_left') {
+      // Extract streamer webcam based on AI face detection or specified position
+      let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58'; // Default fallback: bottom_right
+      if (facecamPosition === 'ai_auto' || !facecamPosition) {
+        try {
+          const aiResult = await faceDetectionService.detect(clipPath);
+          if (aiResult && aiResult.camCrop) {
+            camCrop = aiResult.camCrop;
+            console.log(`[Export] AI Facecam Detection applied: ${aiResult.facecamPosition} (${camCrop})`);
+          }
+        } catch (aiErr) {
+          console.warn('[Export] AI Facecam Detection notice:', aiErr.message);
+        }
+      } else if (facecamPosition === 'bottom_left') {
         camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
+      } else if (facecamPosition === 'bottom_right') {
+        camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
       } else if (facecamPosition === 'top_right') {
         camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
       } else if (facecamPosition === 'top_left') {
         camCrop = 'crop=iw*0.34:ih*0.42:0:0';
+      } else if (facecamPosition === 'middle_left') {
+        camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.29';
+      } else if (facecamPosition === 'middle_right') {
+        camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.29';
       } else if (facecamPosition === 'center') {
         camCrop = 'crop=iw*0.40:ih*0.45:iw*0.30:ih*0.28';
       }

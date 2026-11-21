@@ -9,7 +9,7 @@ const state = {
   subtitlePreset: 'tiktok',
   subtitleFont: 'the_bold_font',
   aspectRatio: localStorage.getItem('clipper_crop_mode') || 'reaction_split',
-  facecamPosition: localStorage.getItem('clipper_facecam_pos') || 'bottom_right',
+  facecamPosition: localStorage.getItem('clipper_facecam_pos') || 'ai_auto',
   editingWordIndex: null,
   editingSentenceIndex: null,
   aiMirror: false,
@@ -497,6 +497,52 @@ function setupEventListeners() {
       state.facecamPosition = e.target.value;
       localStorage.setItem('clipper_facecam_pos', state.facecamPosition);
       updateAspectRatioPreview();
+    });
+  }
+
+  // AI Facecam Scanner Button
+  const btnScanFacecam = document.getElementById('btn-scan-facecam');
+  const aiFacecamStatus = document.getElementById('ai-facecam-status');
+  if (btnScanFacecam) {
+    btnScanFacecam.addEventListener('click', async () => {
+      if (!state.videoId) {
+        alert('Please import a stream or select a clip first to detect facecam.');
+        return;
+      }
+      btnScanFacecam.disabled = true;
+      btnScanFacecam.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
+      try {
+        const res = await fetch('/api/detect-facecam', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            videoId: state.videoId,
+            clipFilename: state.currentClip ? state.currentClip.filename : null
+          })
+        });
+        const data = await res.json();
+        if (data.detected) {
+          if (aiFacecamStatus) {
+            aiFacecamStatus.textContent = `✓ Detected: ${data.facecamPosition}`;
+            aiFacecamStatus.style.display = 'inline';
+          }
+          state.facecamPosition = 'ai_auto';
+          localStorage.setItem('clipper_facecam_pos', 'ai_auto');
+          if (el.studioFacecamPos) el.studioFacecamPos.value = 'ai_auto';
+          showBypassNoticeToast(`🤖 Streamer Facecam detected at ${data.facecamPosition}! Optimal 65/35 crop locked.`);
+          updateAspectRatioPreview();
+        } else {
+          if (aiFacecamStatus) {
+            aiFacecamStatus.textContent = `Standard fallback (${data.facecamPosition || 'bottom-right'})`;
+            aiFacecamStatus.style.display = 'inline';
+          }
+        }
+      } catch (err) {
+        console.warn('Scan face error:', err);
+      } finally {
+        btnScanFacecam.disabled = false;
+        btnScanFacecam.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Scan Face with AI';
+      }
     });
   }
 
@@ -1834,13 +1880,16 @@ function updateAspectRatioPreview() {
   }
   if (el.guideFacecamPosLabel) {
     const labels = {
+      'ai_auto': '🤖 AI Auto-Detect',
       'bottom_right': '↘ Bottom-Right',
       'bottom_left': '↙ Bottom-Left',
+      'middle_left': '⬅ Middle-Left',
+      'middle_right': '➡ Middle-Right',
       'top_right': '↗ Top-Right',
       'top_left': '↖ Top-Left',
       'center': '🎯 Center'
     };
-    el.guideFacecamPosLabel.textContent = labels[state.facecamPosition] || '↘ Bottom-Right';
+    el.guideFacecamPosLabel.textContent = labels[state.facecamPosition] || '🤖 AI Auto-Detect';
   }
 
   // Sync active states on ratio buttons

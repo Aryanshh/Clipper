@@ -155,17 +155,24 @@
           <!-- Reaction Split Streamer Facecam Location Row (Shown when reaction_split active) -->
           <div id="studio-facecam-row" style="display: flex; margin-top: 10px; padding: 10px 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px; align-items: center; gap: 14px; flex-wrap: wrap;">
             <span style="font-size: 11.5px; font-weight: 600; color: #c7d2fe; display: flex; align-items: center; gap: 6px;">
-              <i class="fa-solid fa-video" style="color: #818cf8;"></i> Streamer Facecam Location in Original Stream:
+              <i class="fa-solid fa-video" style="color: #818cf8;"></i> Streamer Facecam Location:
             </span>
             <select id="studio-facecam-pos" style="padding: 4px 10px; font-size: 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(99,102,241,0.4); color: #fff; border-radius: 4px; cursor: pointer; outline: none;">
-              <option value="bottom_right" selected>↘ Bottom-Right Corner (Universal Gaming Standard)</option>
+              <option value="ai_auto" selected>🤖 AI Auto-Detect Streamer Face (Smart Tracker)</option>
+              <option value="bottom_right">↘ Bottom-Right Corner</option>
               <option value="bottom_left">↙ Bottom-Left Corner</option>
+              <option value="middle_left">⬅ Middle-Left Box</option>
+              <option value="middle_right">➡ Middle-Right Box</option>
               <option value="top_right">↗ Top-Right Corner</option>
               <option value="top_left">↖ Top-Left Corner</option>
               <option value="center">🎯 Center Webcam Box</option>
             </select>
+            <button type="button" id="btn-scan-facecam" class="btn btn-secondary" style="padding: 3px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 5px; background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.5); color: #c7d2fe;">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Face with AI
+            </button>
+            <span id="ai-facecam-status" style="font-size: 11px; color: #a7f3d0; font-weight: 600;"></span>
             <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;">
-              Auto-stacks GTA 6 game action on top with live streamer reaction below + synchronized subtitles.
+              Auto-stacks GTA 6 Gameplay (Top 65%) with Live Streamer Reaction (Bottom 35%) + synchronized subtitles.
             </span>
           </div>
 
@@ -559,17 +566,17 @@
               <div id="reaction-split-guide" style="display: none; position: absolute; inset: 0; pointer-events: none; z-index: 5; flex-direction: column; justify-content: space-between;">
                 <div style="padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);">
                   <span style="background: rgba(99, 102, 241, 0.9); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    🎮 GTA 6 Gameplay (Top 56%)
+                    🎮 GTA 6 Gameplay (Top 65%)
                   </span>
                 </div>
-                <!-- Glowing Split Divider Indicator -->
-                <div style="position: absolute; top: 56.25%; left: 0; right: 0; height: 3px; background: #6366f1; box-shadow: 0 0 10px #6366f1; transform: translateY(-50%);"></div>
+                <!-- Glowing Split Divider Indicator at 65% height -->
+                <div style="position: absolute; top: 65%; left: 0; right: 0; height: 3px; background: #6366f1; box-shadow: 0 0 10px #6366f1; transform: translateY(-50%);"></div>
                 <div style="padding: 8px 12px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%);">
                   <span style="background: rgba(236, 72, 153, 0.9); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    🎙️ Streamer Reaction (Bottom 44%)
+                    🎙️ Streamer Reaction (Bottom 35%)
                   </span>
                   <span id="guide-facecam-pos-label" style="background: rgba(0,0,0,0.75); color: #f59e0b; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;">
-                    ↘ Bottom-Right
+                    🤖 AI Auto-Detect
                   </span>
                 </div>
               </div>
@@ -718,11 +725,12 @@
                   </span>
                   <span style="font-size: 10.5px; color: var(--text-muted);">GTA 6 Above • Reaction Below</span>
                 </div>
-                <div class="facecam-pos-selectors" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
-                  <button type="button" class="btn-facecam-pos active" data-pos="bottom_right" title="Streamer webcam is in bottom-right corner">↘ Btm Right</button>
-                  <button type="button" class="btn-facecam-pos" data-pos="bottom_left" title="Streamer webcam is in bottom-left corner">↙ Btm Left</button>
-                  <button type="button" class="btn-facecam-pos" data-pos="top_right" title="Streamer webcam is in top-right corner">↗ Top Right</button>
-                  <button type="button" class="btn-facecam-pos" data-pos="top_left" title="Streamer webcam is in top-left corner">↖ Top Left</button>
+                <div class="facecam-pos-selectors" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
+                  <button type="button" class="btn-facecam-pos active" data-pos="ai_auto" title="AI tracks streamer face automatically">🤖 AI Auto</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="bottom_right" title="Streamer webcam is in bottom-right corner">↘ Btm R</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="bottom_left" title="Streamer webcam is in bottom-left corner">↙ Btm L</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="top_right" title="Streamer webcam is in top-right corner">↗ Top R</button>
+                  <button type="button" class="btn-facecam-pos" data-pos="top_left" title="Streamer webcam is in top-left corner">↖ Top L</button>
                 </div>
               </div>
             </div>
