@@ -9,7 +9,9 @@ const state = {
   subtitlePreset: 'tiktok',
   subtitleFont: 'the_bold_font',
   aspectRatio: localStorage.getItem('clipper_crop_mode') || 'reaction_split',
-  facecamPosition: localStorage.getItem('clipper_facecam_pos') || 'ai_auto',
+  facecamPosition: localStorage.getItem('clipper_facecam_pos') || 'custom',
+  customCamCrop: localStorage.getItem('clipper_custom_cam_crop') || 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58',
+  customGameCrop: localStorage.getItem('clipper_custom_game_crop') || 'crop=ih:ih:(iw-ih)/2:0',
   editingWordIndex: null,
   editingSentenceIndex: null,
   aiMirror: false,
@@ -245,6 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadQueueBadge();
   startSubtitleDemoLoop();
   handleUrlAuthFeedback();
+  initPointerCalibration();
 });
 
 function handleUrlAuthFeedback() {
@@ -1388,11 +1391,20 @@ function handleImportSuccess(data) {
   el.sourcePlayer.src = data.videoUrl;
   el.sourcePlayer.load();
 
-  // If Turbo 4x Multiprocess is enabled, fan-out parallel pipeline immediately!
-  if (el.turboModeCheckbox && el.turboModeCheckbox.checked) {
-    startTurboWorkflow(data.videoId, state.transcriptionLanguage);
+  // If reaction split mode is active, calibrate Game & Streamer View with pointer dots
+  if (state.aspectRatio === 'reaction_split') {
+    openCalibrationPanel(data.videoUrl, () => {
+      proceedWithClippingWorkflow();
+    });
   } else {
-    // Trigger standard Gemini Analysis
+    proceedWithClippingWorkflow();
+  }
+}
+
+function proceedWithClippingWorkflow() {
+  if (el.turboModeCheckbox && el.turboModeCheckbox.checked) {
+    startTurboWorkflow(state.videoId, state.transcriptionLanguage);
+  } else {
     runGeminiAnalysis();
   }
 }
@@ -1797,6 +1809,8 @@ async function handleExport() {
         crop: state.aspectRatio === 'crop',
         cropMode: state.aspectRatio,
         facecamPosition: state.facecamPosition || 'bottom_right',
+        customCamCrop: state.customCamCrop,
+        customGameCrop: state.customGameCrop,
         quality: state.exportQuality || '1080p',
         font: fontSelect ? fontSelect.value : 'arial',
         aiMirror: state.aiMirror,
@@ -3310,6 +3324,8 @@ async function startTurboWorkflow(videoId, language = 'auto', manualClips = null
         styleMode: 'all',
         cropMode: state.aspectRatio || 'reaction_split',
         facecamPosition: state.facecamPosition || 'bottom_right',
+        customCamCrop: state.customCamCrop,
+        customGameCrop: state.customGameCrop,
         quality: state.exportQuality || (el.turboQualitySelect ? el.turboQualitySelect.value : '1080p'),
         durationMode: state.clipDurationMode || '30-60',
         minDuration: state.minDuration,
@@ -3488,5 +3504,350 @@ function renderTurboResults(clips) {
     });
   }
 }
+
+// ----------------------------------------------------
+// Interactive Pointer Dots Calibration System
+// ----------------------------------------------------
+const calibrationState = {
+  game: { x: 0.21875, y: 0.0, w: 0.5625, h: 1.0 }, // Center 1:1 action
+  cam: { x: 0.66, y: 0.58, w: 0.34, h: 0.42 },     // Bottom-right streamer webcam
+  activeDrag: null,
+  onProceed: null,
+  videoLoaded: false
+};
+
+function parseCropString(cropStr) {
+  if (!cropStr || typeof cropStr !== 'string') return null;
+  const match = cropStr.match(/crop=iw\*([\d.]+):ih\*([\d.]+):(?:iw\*([\d.]+)|0):(?:ih\*([\d.]+)|0)/);
+  if (match) {
+    return {
+      w: parseFloat(match[1]) || 0.34,
+      h: parseFloat(match[2]) || 0.42,
+      x: parseFloat(match[3]) || 0,
+      y: parseFloat(match[4]) || 0
+    };
+  }
+  return null;
+}
+
+function initPointerCalibration() {
+  const panel = document.getElementById('calibration-panel');
+  const overlay = document.getElementById('pointer-overlay-layer');
+  const gameBox = document.getElementById('pointer-game-box');
+  const camBox = document.getElementById('pointer-cam-box');
+  const video = document.getElementById('calibration-source-video');
+  const btnConfirm = document.getElementById('btn-calibrate-confirm');
+  const btnSkip = document.getElementById('btn-calibrate-skip');
+  const btnOpen = document.getElementById('btn-open-calibration');
+  const btnEditorOpen = document.getElementById('btn-editor-open-calibration');
+
+  if (!panel || !overlay || !gameBox || !camBox || !video) return;
+
+  // Restore saved crops from state if valid
+  const savedCam = parseCropString(state.customCamCrop);
+  if (savedCam) calibrationState.cam = savedCam;
+  const savedGame = parseCropString(state.customGameCrop);
+  if (savedGame) calibrationState.game = savedGame;
+
+  // Video time update: keep live 9:16 phone canvases drawing
+  video.addEventListener('timeupdate', () => {
+    drawSplitPreviewCanvases();
+  });
+  video.addEventListener('loadeddata', () => {
+    calibrationState.videoLoaded = true;
+    updatePointerBoxesUI();
+    drawSplitPreviewCanvases();
+  });
+  video.addEventListener('seeked', () => {
+    drawSplitPreviewCanvases();
+  });
+
+  // Pointer interactions for dragging boxes and resizing pointer dots
+  let dragData = null;
+
+  overlay.addEventListener('pointerdown', (e) => {
+    const handleEl = e.target.closest('.pointer-dot');
+    const centerEl = e.target.closest('.pointer-drag-center');
+    if (!handleEl && !centerEl) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const target = handleEl ? handleEl.dataset.target : centerEl.dataset.target;
+    const handle = handleEl ? handleEl.dataset.handle : 'center';
+
+    const rect = overlay.getBoundingClientRect();
+    const box = calibrationState[target];
+
+    dragData = {
+      target,
+      handle,
+      startX: e.clientX,
+      startY: e.clientY,
+      rect,
+      orig: { ...box }
+    };
+
+    if (handleEl) handleEl.classList.add('dragging');
+    const boxEl = target === 'game' ? gameBox : camBox;
+    boxEl.classList.add('active-drag');
+    overlay.setPointerCapture(e.pointerId);
+  });
+
+  overlay.addEventListener('pointermove', (e) => {
+    if (!dragData) return;
+    e.preventDefault();
+
+    const dx = (e.clientX - dragData.startX) / dragData.rect.width;
+    const dy = (e.clientY - dragData.startY) / dragData.rect.height;
+    const box = calibrationState[dragData.target];
+    const orig = dragData.orig;
+
+    if (dragData.handle === 'center') {
+      box.x = Math.max(0, Math.min(1 - orig.w, orig.x + dx));
+      box.y = Math.max(0, Math.min(1 - orig.h, orig.y + dy));
+    } else if (dragData.handle === 'nw') {
+      const newX = Math.max(0, Math.min(orig.x + orig.w - 0.1, orig.x + dx));
+      const newY = Math.max(0, Math.min(orig.y + orig.h - 0.1, orig.y + dy));
+      box.w = orig.w + (orig.x - newX);
+      box.h = orig.h + (orig.y - newY);
+      box.x = newX;
+      box.y = newY;
+    } else if (dragData.handle === 'ne') {
+      const newW = Math.max(0.1, Math.min(1 - orig.x, orig.w + dx));
+      const newY = Math.max(0, Math.min(orig.y + orig.h - 0.1, orig.y + dy));
+      box.w = newW;
+      box.h = orig.h + (orig.y - newY);
+      box.y = newY;
+    } else if (dragData.handle === 'sw') {
+      const newX = Math.max(0, Math.min(orig.x + orig.w - 0.1, orig.x + dx));
+      const newH = Math.max(0.1, Math.min(1 - orig.y, orig.h + dy));
+      box.w = orig.w + (orig.x - newX);
+      box.h = newH;
+      box.x = newX;
+    } else if (dragData.handle === 'se') {
+      box.w = Math.max(0.1, Math.min(1 - orig.x, orig.w + dx));
+      box.h = Math.max(0.1, Math.min(1 - orig.y, orig.h + dy));
+    }
+
+    updatePointerBoxesUI();
+  });
+
+  const stopDrag = (e) => {
+    if (!dragData) return;
+    document.querySelectorAll('.pointer-dot.dragging').forEach(d => d.classList.remove('dragging'));
+    gameBox.classList.remove('active-drag');
+    camBox.classList.remove('active-drag');
+    try { overlay.releasePointerCapture(e.pointerId); } catch (err) {}
+    dragData = null;
+    savePointerCalibration(false);
+  };
+
+  overlay.addEventListener('pointerup', stopDrag);
+  overlay.addEventListener('pointercancel', stopDrag);
+
+  // Preset buttons
+  document.querySelectorAll('.btn-cam-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = btn.dataset.preset;
+      applyCamPreset(p);
+    });
+  });
+
+  document.querySelectorAll('.btn-game-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = btn.dataset.preset;
+      applyGamePreset(p);
+    });
+  });
+
+  // Confirm & Proceed
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', () => {
+      savePointerCalibration(true);
+      closeCalibrationPanel();
+      if (typeof calibrationState.onProceed === 'function') {
+        const cb = calibrationState.onProceed;
+        calibrationState.onProceed = null;
+        cb();
+      }
+    });
+  }
+
+  // Skip / Default
+  if (btnSkip) {
+    btnSkip.addEventListener('click', () => {
+      applyCamPreset('bottom_right');
+      applyGamePreset('center_action');
+      savePointerCalibration(true);
+      closeCalibrationPanel();
+      if (typeof calibrationState.onProceed === 'function') {
+        const cb = calibrationState.onProceed;
+        calibrationState.onProceed = null;
+        cb();
+      }
+    });
+  }
+
+  // Open button in workspace
+  if (btnOpen) {
+    btnOpen.addEventListener('click', () => {
+      const src = (el.sourcePlayer && el.sourcePlayer.src) ? el.sourcePlayer.src : state.videoUrl;
+      openCalibrationPanel(src);
+    });
+  }
+
+  // Open button in editor
+  if (btnEditorOpen) {
+    btnEditorOpen.addEventListener('click', () => {
+      const src = (el.sourcePlayer && el.sourcePlayer.src) ? el.sourcePlayer.src : state.videoUrl;
+      openCalibrationPanel(src);
+    });
+  }
+
+  updatePointerBoxesUI();
+}
+
+function applyCamPreset(preset) {
+  if (preset === 'bottom_right') {
+    calibrationState.cam = { x: 0.66, y: 0.58, w: 0.34, h: 0.42 };
+  } else if (preset === 'bottom_left') {
+    calibrationState.cam = { x: 0.0, y: 0.58, w: 0.34, h: 0.42 };
+  } else if (preset === 'middle_left') {
+    calibrationState.cam = { x: 0.0, y: 0.29, w: 0.34, h: 0.42 };
+  } else if (preset === 'middle_right') {
+    calibrationState.cam = { x: 0.66, y: 0.29, w: 0.34, h: 0.42 };
+  } else if (preset === 'top_right') {
+    calibrationState.cam = { x: 0.66, y: 0.0, w: 0.34, h: 0.42 };
+  } else if (preset === 'top_left') {
+    calibrationState.cam = { x: 0.0, y: 0.0, w: 0.34, h: 0.42 };
+  } else if (preset === 'center') {
+    calibrationState.cam = { x: 0.30, y: 0.28, w: 0.40, h: 0.45 };
+  }
+  state.facecamPosition = preset;
+  updatePointerBoxesUI();
+  savePointerCalibration(false);
+}
+
+function applyGamePreset(preset) {
+  if (preset === 'center_action') {
+    calibrationState.game = { x: 0.21875, y: 0.0, w: 0.5625, h: 1.0 };
+  } else if (preset === 'full_width') {
+    calibrationState.game = { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
+  }
+  updatePointerBoxesUI();
+  savePointerCalibration(false);
+}
+
+function updatePointerBoxesUI() {
+  const gameBox = document.getElementById('pointer-game-box');
+  const camBox = document.getElementById('pointer-cam-box');
+  if (!gameBox || !camBox) return;
+
+  const g = calibrationState.game;
+  gameBox.style.left = `${(g.x * 100).toFixed(2)}%`;
+  gameBox.style.top = `${(g.y * 100).toFixed(2)}%`;
+  gameBox.style.width = `${(g.w * 100).toFixed(2)}%`;
+  gameBox.style.height = `${(g.h * 100).toFixed(2)}%`;
+
+  const c = calibrationState.cam;
+  camBox.style.left = `${(c.x * 100).toFixed(2)}%`;
+  camBox.style.top = `${(c.y * 100).toFixed(2)}%`;
+  camBox.style.width = `${(c.w * 100).toFixed(2)}%`;
+  camBox.style.height = `${(c.h * 100).toFixed(2)}%`;
+
+  const readout = document.getElementById('calibration-coords-readout');
+  if (readout) {
+    readout.textContent = `Game: [${Math.round(g.x * 100)}%, ${Math.round(g.y * 100)}%, ${Math.round(g.w * 100)}%×${Math.round(g.h * 100)}%] • Cam: [${Math.round(c.x * 100)}%, ${Math.round(c.y * 100)}%, ${Math.round(c.w * 100)}%×${Math.round(c.h * 100)}%]`;
+  }
+
+  drawSplitPreviewCanvases();
+}
+
+function drawSplitPreviewCanvases() {
+  const video = document.getElementById('calibration-source-video') || el.sourcePlayer;
+  if (!video || !video.videoWidth || !video.videoHeight) return;
+
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+
+  // Top 65% Gameplay canvas
+  const gameCanvas = document.getElementById('split-preview-game-canvas');
+  if (gameCanvas) {
+    const ctx = gameCanvas.getContext('2d');
+    const g = calibrationState.game;
+    const sx = Math.max(0, g.x * vw);
+    const sy = Math.max(0, g.y * vh);
+    const sw = Math.min(vw - sx, g.w * vw);
+    const sh = Math.min(vh - sy, g.h * vh);
+    if (sw > 0 && sh > 0) {
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, gameCanvas.width, gameCanvas.height);
+    }
+  }
+
+  // Bottom 35% Streamer Facecam canvas
+  const camCanvas = document.getElementById('split-preview-cam-canvas');
+  if (camCanvas) {
+    const ctx = camCanvas.getContext('2d');
+    const c = calibrationState.cam;
+    const sx = Math.max(0, c.x * vw);
+    const sy = Math.max(0, c.y * vh);
+    const sw = Math.min(vw - sx, c.w * vw);
+    const sh = Math.min(vh - sy, c.h * vh);
+    if (sw > 0 && sh > 0) {
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, camCanvas.width, camCanvas.height);
+    }
+  }
+}
+
+function savePointerCalibration(notify = true) {
+  const c = calibrationState.cam;
+  const g = calibrationState.game;
+
+  state.customCamCrop = `crop=iw*${c.w.toFixed(3)}:ih*${chFix(c.h)}:iw*${c.x.toFixed(3)}:ih*${c.y.toFixed(3)}`;
+  state.customGameCrop = `crop=iw*${g.w.toFixed(3)}:ih*${g.h.toFixed(3)}:iw*${g.x.toFixed(3)}:ih*${g.y.toFixed(3)}`;
+
+  localStorage.setItem('clipper_custom_cam_crop', state.customCamCrop);
+  localStorage.setItem('clipper_custom_game_crop', state.customGameCrop);
+  localStorage.setItem('clipper_facecam_pos', state.facecamPosition || 'custom');
+
+  if (notify && typeof showBypassNoticeToast === 'function') {
+    showBypassNoticeToast('🎯 View Locked: Game (Top 65%) & Streamer Facecam (Bottom 35%) calibrated!');
+  }
+}
+
+function chFix(val) {
+  return typeof val === 'number' ? val.toFixed(3) : '0.420';
+}
+
+function openCalibrationPanel(videoUrl, onProceed = null) {
+  const panel = document.getElementById('calibration-panel');
+  const video = document.getElementById('calibration-source-video');
+  if (!panel || !video) return;
+
+  calibrationState.onProceed = onProceed;
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  if (videoUrl && video.src !== videoUrl) {
+    video.src = videoUrl;
+    video.load();
+    video.addEventListener('loadedmetadata', () => {
+      if (video.duration > 3) {
+        video.currentTime = Math.min(5, video.duration / 3);
+      }
+    }, { once: true });
+  }
+
+  updatePointerBoxesUI();
+}
+
+function closeCalibrationPanel() {
+  const panel = document.getElementById('calibration-panel');
+  if (panel) {
+    panel.style.display = 'none';
+  }
+}
+
 
 

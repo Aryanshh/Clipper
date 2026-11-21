@@ -2120,4 +2120,161 @@ input:checked + .slider:before {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
 }
 
+/* ---------------------------------------------------- */
+/* Interactive Pointer Dots Calibration Overlay & Tool */
+/* ---------------------------------------------------- */
+.calibration-panel {
+  position: relative;
+  background: rgba(19, 17, 28, 0.96);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: var(--border-radius-lg);
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+.calibration-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .calibration-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pointer-box {
+  position: absolute;
+  box-sizing: border-box;
+  touch-action: none;
+  user-select: none;
+  cursor: move;
+  transition: box-shadow var(--transition-fast);
+}
+
+.pointer-box.game-box {
+  border: 2px dashed #10b981;
+  background: rgba(16, 185, 129, 0.16);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+  z-index: 10;
+}
+
+.pointer-box.cam-box {
+  border: 2px solid #a855f7;
+  background: rgba(168, 85, 247, 0.22);
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.5);
+  z-index: 12;
+}
+
+.pointer-box.active-drag {
+  opacity: 0.95;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.6);
+}
+
+.pointer-box-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.pointer-box-tag.tag-game {
+  background: rgba(16, 185, 129, 0.95);
+  color: #fff;
+}
+
+.pointer-box-tag.tag-cam {
+  background: rgba(168, 85, 247, 0.95);
+  color: #fff;
+}
+
+.pointer-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 255, 255, 0.7);
+  z-index: 25;
+  transform: translate(-50%, -50%);
+  transition: transform 0.1s ease, background 0.1s ease;
+}
+
+.pointer-dot:hover,
+.pointer-dot.dragging {
+  transform: translate(-50%, -50%) scale(1.35);
+  background: #facc15;
+}
+
+.game-box .pointer-dot {
+  border: 2.5px solid #10b981;
+}
+
+.cam-box .pointer-dot {
+  border: 2.5px solid #a855f7;
+}
+
+.dot-nw { top: 0%; left: 0%; cursor: nwse-resize; }
+.dot-ne { top: 0%; left: 100%; cursor: nesw-resize; }
+.dot-sw { top: 100%; left: 0%; cursor: nesw-resize; }
+.dot-se { top: 100%; left: 100%; cursor: nwse-resize; }
+
+.pointer-drag-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  cursor: move;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  pointer-events: auto;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.btn-cam-preset,
+.btn-game-preset {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-cam-preset:hover {
+  background: rgba(168, 85, 247, 0.25);
+  border-color: #a855f7;
+  color: #fff;
+}
+
+.btn-game-preset:hover {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: #10b981;
+  color: #fff;
+}
+
+
 

@@ -24,7 +24,7 @@ if (!process.env.PATH.includes(ffmpegDir)) {
 const { GoogleGenAI } = require('@google/genai');
 const youtubeService = require('./youtubeService');
 const YoutubeUploadService = require('./youtubeUploadService');
-const faceDetectionService = require('./faceDetectionService');
+
 
 // Crash prevention handlers for background tasks & streams
 process.on('unhandledRejection', (reason, promise) => {
@@ -1265,41 +1265,11 @@ app.post('/api/captions', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 5.5 AI Streamer Face Detection Endpoint
-// ----------------------------------------------------
-app.post('/api/detect-facecam', async (req, res) => {
-  try {
-    const { videoId, clipFilename } = req.body;
-    let targetFile = null;
-
-    if (clipFilename) {
-      const p1 = path.join(__dirname, 'clips', clipFilename);
-      const p2 = path.join(__dirname, 'downloads', clipFilename);
-      if (fs.existsSync(p1)) targetFile = p1;
-      else if (fs.existsSync(p2)) targetFile = p2;
-    } else if (videoId) {
-      const p = path.join(__dirname, 'downloads', `${videoId}.mp4`);
-      if (fs.existsSync(p)) targetFile = p;
-    }
-
-    if (!targetFile) {
-      return res.status(404).json({ error: 'Video or clip file not found for face detection.' });
-    }
-
-    const result = await faceDetectionService.detect(targetFile);
-    res.json(result);
-  } catch (err) {
-    console.error('Face detection endpoint error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ----------------------------------------------------
 // 6. Subtitle Burn-In and Export Endpoint
 // ----------------------------------------------------
 app.post('/api/export', async (req, res) => {
   try {
-    const { clipFilename, captions, style, crop, cropMode, facecamPosition = 'bottom_right', font, title, description, hashtags, aiMirror, hflip, quality = '1080p', trimStart = 0, trimDuration = null } = req.body;
+    const { clipFilename, captions, style, crop, cropMode, facecamPosition = 'bottom_right', customCamCrop, customGameCrop, font, title, description, hashtags, aiMirror, hflip, quality = '1080p', trimStart = 0, trimDuration = null } = req.body;
     if (!clipFilename || !captions || !Array.isArray(captions)) {
       return res.status(400).json({ error: 'clipFilename and captions array are required.' });
     }
@@ -1531,21 +1501,13 @@ ${dialogueEvents.join('\n')}
       const dividerH = is4K ? 8 : 4;
       const dividerY = topH - Math.round(dividerH / 2);
 
-      // Extract streamer webcam based on AI face detection or specified position
+      // Extract streamer webcam based on custom calibrated pointer dots or specified position
       let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58'; // Default fallback: bottom_right
-      if (facecamPosition === 'ai_auto' || !facecamPosition) {
-        try {
-          const aiResult = await faceDetectionService.detect(clipPath);
-          if (aiResult && aiResult.camCrop) {
-            camCrop = aiResult.camCrop;
-            console.log(`[Export] AI Facecam Detection applied: ${aiResult.facecamPosition} (${camCrop})`);
-          }
-        } catch (aiErr) {
-          console.warn('[Export] AI Facecam Detection notice:', aiErr.message);
-        }
+      if (customCamCrop && typeof customCamCrop === 'string' && customCamCrop.startsWith('crop=')) {
+        camCrop = customCamCrop;
       } else if (facecamPosition === 'bottom_left') {
         camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
-      } else if (facecamPosition === 'bottom_right') {
+      } else if (facecamPosition === 'bottom_right' || facecamPosition === 'ai_auto' || !facecamPosition) {
         camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
       } else if (facecamPosition === 'top_right') {
         camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
@@ -1559,8 +1521,11 @@ ${dialogueEvents.join('\n')}
         camCrop = 'crop=iw*0.40:ih*0.45:iw*0.30:ih*0.28';
       }
 
-      // Crop the center 1:1 action area for the gameplay
-      const gameCrop = 'crop=ih:ih:(iw-ih)/2:0';
+      // Crop the gameplay based on custom pointer dots or center 1:1 action area
+      let gameCrop = 'crop=ih:ih:(iw-ih)/2:0';
+      if (customGameCrop && typeof customGameCrop === 'string' && customGameCrop.startsWith('crop=')) {
+        gameCrop = customGameCrop;
+      }
 
       const splitGraph = `split=2[g_src][c_src];` +
         `[g_src]${gameCrop},scale=${targetW}:${topH}:flags=lanczos[game_top];` +
@@ -1881,7 +1846,7 @@ const turboBatchService = new TurboBatchService({
 // Start background Turbo Multiprocess job (supports flexible high-density clip counts)
 app.post('/api/turbo/start', async (req, res) => {
   try {
-    const { videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', facecamPosition = 'bottom_right', manualClips, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration, maxDuration } = req.body;
+    const { videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', facecamPosition = 'bottom_right', customCamCrop, customGameCrop, manualClips, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration, maxDuration } = req.body;
     if (!videoId) {
       return res.status(400).json({ error: 'videoId is required.' });
     }
@@ -1892,6 +1857,8 @@ app.post('/api/turbo/start', async (req, res) => {
       styleMode,
       cropMode,
       facecamPosition,
+      customCamCrop,
+      customGameCrop,
       manualClips,
       maxClips,
       quality,

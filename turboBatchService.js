@@ -1,7 +1,6 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const faceDetectionService = require('./faceDetectionService');
 
 class TurboBatchService {
   constructor(deps) {
@@ -206,7 +205,7 @@ ${dialogueEvents.join('\n')}
    * Main Turbo Batch Orchestrator
    * Produces multiple complete, transcribed, styled, and 9:16 rendered clips in parallel.
    */
-  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', facecamPosition = 'bottom_right', manualClips = null, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration = null, maxDuration = null, onProgress = null }) {
+  async startTurboBatch({ videoId, language = 'auto', styleMode = 'all', cropMode = 'crop', facecamPosition = 'bottom_right', customCamCrop = null, customGameCrop = null, manualClips = null, maxClips = 'auto', quality = '1080p', durationMode = '30-60', minDuration = null, maxDuration = null, onProgress = null }) {
     const batchId = `turbo_${Date.now()}`;
     const startTime = Date.now();
 
@@ -238,11 +237,11 @@ ${dialogueEvents.join('\n')}
     };
 
     // Run pipeline asynchronously so caller gets batchId immediately if needed, or await for result
-    return this.runPipeline(batchState, { videoId, language, styleMode, cropMode, facecamPosition, manualClips, maxClips, quality, durationMode, minDuration, maxDuration }, updateBatch);
+    return this.runPipeline(batchState, { videoId, language, styleMode, cropMode, facecamPosition, customCamCrop, customGameCrop, manualClips, maxClips, quality, durationMode, minDuration, maxDuration }, updateBatch);
   }
 
   async runPipeline(batchState, options, updateBatch) {
-    const { videoId, language, styleMode, cropMode, facecamPosition = 'bottom_right', manualClips, maxClips, quality, durationMode = '30-60', minDuration, maxDuration } = options;
+    const { videoId, language, styleMode, cropMode, facecamPosition = 'bottom_right', customCamCrop, customGameCrop, manualClips, maxClips, quality, durationMode = '30-60', minDuration, maxDuration } = options;
     const startTime = batchState.startTime;
 
     const is4K = quality === '4k' || quality === '2160p';
@@ -560,19 +559,11 @@ Return strictly JSON matching the schema.`;
           const dividerY = topH - Math.round(dividerH / 2);
 
           let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
-          if (facecamPosition === 'ai_auto' || !facecamPosition) {
-            try {
-              const aiResult = await faceDetectionService.detect(clipPath);
-              if (aiResult && aiResult.camCrop) {
-                camCrop = aiResult.camCrop;
-                console.log(`[Turbo] AI Facecam Detection applied for clip ${index}: ${aiResult.facecamPosition} (${camCrop})`);
-              }
-            } catch (aiErr) {
-              console.warn('[Turbo] AI Facecam Detection notice:', aiErr.message);
-            }
+          if (customCamCrop && typeof customCamCrop === 'string' && customCamCrop.startsWith('crop=')) {
+            camCrop = customCamCrop;
           } else if (facecamPosition === 'bottom_left') {
             camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
-          } else if (facecamPosition === 'bottom_right') {
+          } else if (facecamPosition === 'bottom_right' || facecamPosition === 'ai_auto' || !facecamPosition) {
             camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
           } else if (facecamPosition === 'top_right') {
             camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
@@ -586,7 +577,10 @@ Return strictly JSON matching the schema.`;
             camCrop = 'crop=iw*0.40:ih*0.45:iw*0.30:ih*0.28';
           }
 
-          const gameCrop = 'crop=ih:ih:(iw-ih)/2:0';
+          let gameCrop = 'crop=ih:ih:(iw-ih)/2:0';
+          if (customGameCrop && typeof customGameCrop === 'string' && customGameCrop.startsWith('crop=')) {
+            gameCrop = customGameCrop;
+          }
           filterComplex = `split=2[g_src][c_src];` +
             `[g_src]${gameCrop},scale=${targetW}:${topH}:flags=lanczos[game_top];` +
             `[c_src]${camCrop},scale=${targetW}:${botH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${targetW}:${botH}[cam_bot];` +

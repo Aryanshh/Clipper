@@ -2,7 +2,6 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
 const { Readable } = require('stream');
-const faceDetectionService = require('./faceDetectionService');
 
 class LiveStreamService {
   constructor(deps) {
@@ -518,24 +517,26 @@ Respond ONLY in valid JSON with this exact schema:
       this.addEvent(`Rendering 9:16 vertical clip with creative subtitles...`);
       let cropFilter = '';
       if (stream.cropMode === 'reaction_split') {
-        const facecamPos = stream.facecamPosition || 'ai_auto';
-        let camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
-        if (facecamPos === 'ai_auto' || !facecamPos) {
-          try {
-            const aiResult = await faceDetectionService.detect(clipFilename);
-            if (aiResult && aiResult.camCrop) {
-              camCrop = aiResult.camCrop;
-            }
-          } catch (e) {}
-        } else if (facecamPos === 'bottom_left') {
-          camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
-        } else if (facecamPos === 'top_right') {
-          camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
-        } else if (facecamPos === 'top_left') {
-          camCrop = 'crop=iw*0.34:ih*0.42:0:0';
+        const facecamPos = stream.facecamPosition || 'bottom_right';
+        let camCrop = stream.customCamCrop || 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.58';
+        if (!stream.customCamCrop) {
+          if (facecamPos === 'bottom_left') {
+            camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.58';
+          } else if (facecamPos === 'top_right') {
+            camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:0';
+          } else if (facecamPos === 'top_left') {
+            camCrop = 'crop=iw*0.34:ih*0.42:0:0';
+          } else if (facecamPos === 'middle_left') {
+            camCrop = 'crop=iw*0.34:ih*0.42:0:ih*0.29';
+          } else if (facecamPos === 'middle_right') {
+            camCrop = 'crop=iw*0.34:ih*0.42:iw*0.66:ih*0.29';
+          } else if (facecamPos === 'center') {
+            camCrop = 'crop=iw*0.40:ih*0.45:iw*0.30:ih*0.28';
+          }
         }
+        const gameCrop = stream.customGameCrop || 'crop=ih:ih:(iw-ih)/2:0';
         cropFilter = `split=2[g_src][c_src];` +
-          `[g_src]crop=ih:ih:(iw-ih)/2:0,scale=1080:1248:flags=lanczos[game_top];` +
+          `[g_src]${gameCrop},scale=1080:1248:flags=lanczos[game_top];` +
           `[c_src]${camCrop},scale=1080:672:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:672[cam_bot];` +
           `[game_top][cam_bot]vstack=inputs=2,drawbox=y=1246:color=0x6366f1@0.9:width=iw:height=4:t=fill[split_base];` +
           `[split_base]subtitles=${assFilename}`;

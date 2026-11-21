@@ -155,10 +155,10 @@
           <!-- Reaction Split Streamer Facecam Location Row (Shown when reaction_split active) -->
           <div id="studio-facecam-row" style="display: flex; margin-top: 10px; padding: 10px 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px; align-items: center; gap: 14px; flex-wrap: wrap;">
             <span style="font-size: 11.5px; font-weight: 600; color: #c7d2fe; display: flex; align-items: center; gap: 6px;">
-              <i class="fa-solid fa-video" style="color: #818cf8;"></i> Streamer Facecam Location:
+              <i class="fa-solid fa-crosshairs" style="color: #818cf8;"></i> Streamer &amp; Game View:
             </span>
             <select id="studio-facecam-pos" style="padding: 4px 10px; font-size: 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(99,102,241,0.4); color: #fff; border-radius: 4px; cursor: pointer; outline: none;">
-              <option value="ai_auto" selected>🤖 AI Auto-Detect Streamer Face (Smart Tracker)</option>
+              <option value="custom" selected>🎯 Interactive Pointer Dots (Calibrate on Video)</option>
               <option value="bottom_right">↘ Bottom-Right Corner</option>
               <option value="bottom_left">↙ Bottom-Left Corner</option>
               <option value="middle_left">⬅ Middle-Left Box</option>
@@ -167,12 +167,8 @@
               <option value="top_left">↖ Top-Left Corner</option>
               <option value="center">🎯 Center Webcam Box</option>
             </select>
-            <button type="button" id="btn-scan-facecam" class="btn btn-secondary" style="padding: 3px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 5px; background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.5); color: #c7d2fe;">
-              <i class="fa-solid fa-wand-magic-sparkles"></i> Scan Face with AI
-            </button>
-            <span id="ai-facecam-status" style="font-size: 11px; color: #a7f3d0; font-weight: 600;"></span>
             <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;">
-              Auto-stacks GTA 6 Gameplay (Top 65%) with Live Streamer Reaction (Bottom 35%) + synchronized subtitles.
+              Fix exact views with draggable pointer dots: GTA 6 Gameplay (Top 65%) + Streamer Reaction (Bottom 35%).
             </span>
           </div>
 
@@ -504,12 +500,143 @@
         </div>
       </div>
 
+      <!-- Interactive Pointer Dots Calibration Panel -->
+      <div id="calibration-panel" class="calibration-panel" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-crosshairs" style="color: #6366f1;"></i> Fix Game &amp; Streamer View (Pointer Dots Calibration)
+            </h2>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
+              Drag the pointer corner dots to precisely frame <span style="color:#10b981; font-weight:600;">Gameplay (Top 65%)</span> and <span style="color:#a855f7; font-weight:600;">Streamer Reaction (Bottom 35%)</span>.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" id="btn-calibrate-skip" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+              Use Default Cam (Bottom-Right)
+            </button>
+            <button type="button" id="btn-calibrate-confirm" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-size: 12.5px; font-weight: 700; padding: 8px 18px; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);">
+              <i class="fa-solid fa-check-double"></i> Lock View &amp; Continue
+            </button>
+          </div>
+        </div>
+
+        <!-- Calibration Stage Grid -->
+        <div class="calibration-grid">
+          
+          <!-- Left: 16:9 Interactive Video Stage with Draggable Pointer Dots -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div id="calibration-canvas-container" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid var(--panel-border); user-select: none;">
+              <!-- Video snapshot or live video -->
+              <video id="calibration-source-video" style="width: 100%; height: 100%; object-fit: contain; display: block;" playsinline muted></video>
+              <canvas id="calibration-snapshot-canvas" style="display: none; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;"></canvas>
+
+              <!-- Pointer Overlay Layer -->
+              <div id="pointer-overlay-layer" style="position: absolute; inset: 0; pointer-events: auto;">
+                
+                <!-- 1. Green Gameplay Pointer Box -->
+                <div id="pointer-game-box" class="pointer-box game-box">
+                  <span class="pointer-box-tag tag-game">🎮 Game (Top 65%)</span>
+                  <div class="pointer-dot dot-nw" data-target="game" data-handle="nw"></div>
+                  <div class="pointer-dot dot-ne" data-target="game" data-handle="ne"></div>
+                  <div class="pointer-dot dot-sw" data-target="game" data-handle="sw"></div>
+                  <div class="pointer-dot dot-se" data-target="game" data-handle="se"></div>
+                  <div class="pointer-drag-center" data-target="game" title="Drag to move gameplay area">
+                    <i class="fa-solid fa-arrows-up-down-left-right"></i> Move Game View
+                  </div>
+                </div>
+
+                <!-- 2. Purple Streamer Facecam Pointer Box -->
+                <div id="pointer-cam-box" class="pointer-box cam-box">
+                  <span class="pointer-box-tag tag-cam">🎙️ Streamer Facecam (Bottom 35%)</span>
+                  <div class="pointer-dot dot-nw" data-target="cam" data-handle="nw"></div>
+                  <div class="pointer-dot dot-ne" data-target="cam" data-handle="ne"></div>
+                  <div class="pointer-dot dot-sw" data-target="cam" data-handle="sw"></div>
+                  <div class="pointer-dot dot-se" data-target="cam" data-handle="se"></div>
+                  <div class="pointer-drag-center" data-target="cam" title="Drag to move streamer camera">
+                    <i class="fa-solid fa-arrows-up-down-left-right"></i> Move Cam
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Toolbar / Presets -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border);">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: 11px; font-weight: 600; color: #c7d2fe;">Cam Presets:</span>
+                <button type="button" class="btn-cam-preset" data-preset="bottom_right">↘ Btm-R</button>
+                <button type="button" class="btn-cam-preset" data-preset="bottom_left">↙ Btm-L</button>
+                <button type="button" class="btn-cam-preset" data-preset="middle_left">⬅ Mid-L</button>
+                <button type="button" class="btn-cam-preset" data-preset="middle_right">➡ Mid-R</button>
+                <button type="button" class="btn-cam-preset" data-preset="top_right">↗ Top-R</button>
+                <button type="button" class="btn-cam-preset" data-preset="top_left">↖ Top-L</button>
+                <button type="button" class="btn-cam-preset" data-preset="center">🎯 Center</button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 11px; font-weight: 600; color: #a7f3d0;">Game View:</span>
+                <button type="button" class="btn-game-preset" data-preset="center_action">Center 1:1</button>
+                <button type="button" class="btn-game-preset" data-preset="full_width">Full 16:9</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Real-Time Live 9:16 Split Preview Phone -->
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 5px;">
+              <i class="fa-solid fa-mobile-screen" style="color: #6366f1;"></i> Live 9:16 Result Preview
+            </div>
+
+            <!-- Mini 9:16 Split Phone Card -->
+            <div class="live-split-phone-preview" style="position: relative; width: 190px; height: 338px; background: #050508; border-radius: 18px; border: 3px solid rgba(255,255,255,0.15); box-shadow: 0 10px 25px rgba(0,0,0,0.6); overflow: hidden; display: flex; flex-direction: column;">
+              
+              <!-- Top 65% Gameplay Frame -->
+              <div style="position: relative; width: 100%; height: 65%; overflow: hidden; background: #111;">
+                <canvas id="split-preview-game-canvas" width="270" height="312" style="width: 100%; height: 100%; object-fit: cover; display: block;"></canvas>
+                <span style="position: absolute; top: 6px; left: 6px; background: rgba(16, 185, 129, 0.85); color: #fff; font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 3px;">
+                  TOP 65% GAMEPLAY
+                </span>
+              </div>
+
+              <!-- Glowing Neon Split Divider -->
+              <div style="position: relative; width: 100%; height: 3px; background: #6366f1; box-shadow: 0 0 8px #6366f1; z-index: 5;"></div>
+
+              <!-- Bottom 35% Streamer Facecam Frame -->
+              <div style="position: relative; width: 100%; height: 35%; overflow: hidden; background: #000;">
+                <canvas id="split-preview-cam-canvas" width="270" height="168" style="width: 100%; height: 100%; object-fit: cover; display: block;"></canvas>
+                <span style="position: absolute; bottom: 6px; left: 6px; background: rgba(168, 85, 247, 0.85); color: #fff; font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 3px;">
+                  BOTTOM 35% REACTION
+                </span>
+              </div>
+
+              <!-- Subtitle Overlay in Center -->
+              <div style="position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); width: 90%; text-align: center; pointer-events: none; z-index: 10;">
+                <span style="background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 3px; font-family: 'The Bold Font', sans-serif;">
+                  WHAT A <span style="color:#00FF66;">CRAZY PLAY!</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Readout Coordinates -->
+            <div id="calibration-coords-readout" style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-align: center; margin-top: 4px;">
+              Game: Center Focus • Cam: Bottom-Right
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       <div class="workspace-grid">
         
         <!-- Left Panel: Original Video Player / Status -->
         <div class="workspace-left">
           <div class="player-card glass-panel">
-            <h2 class="panel-title"><i class="fa-solid fa-video"></i> Source Video</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h2 class="panel-title" style="margin: 0;"><i class="fa-solid fa-video"></i> Source Video</h2>
+              <button type="button" id="btn-open-calibration" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; background: rgba(99,102,241,0.25); border: 1px solid rgba(99,102,241,0.5); color: #c7d2fe; display: flex; align-items: center; gap: 5px;">
+                <i class="fa-solid fa-crosshairs"></i> Adjust Pointer Dots
+              </button>
+            </div>
             <div class="video-container">
               <video id="source-player" controls preload="metadata"></video>
             </div>
@@ -721,12 +848,14 @@
               <div id="editor-facecam-config" style="margin-top: 10px; padding: 10px 12px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: var(--border-radius-sm);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <span style="font-size: 11.5px; font-weight: 600; color: #c7d2fe; display: flex; align-items: center; gap: 5px;">
-                    <i class="fa-solid fa-video" style="color: #818cf8;"></i> Streamer Webcam Corner:
+                    <i class="fa-solid fa-crosshairs" style="color: #818cf8;"></i> Streamer &amp; Game View:
                   </span>
-                  <span style="font-size: 10.5px; color: var(--text-muted);">GTA 6 Above • Reaction Below</span>
+                  <button type="button" id="btn-editor-open-calibration" class="btn btn-secondary" style="font-size: 10.5px; padding: 3px 8px; background: rgba(99,102,241,0.25); border: 1px solid rgba(99,102,241,0.5); color: #c7d2fe;">
+                    <i class="fa-solid fa-arrows-up-down-left-right"></i> Adjust Pointer Dots
+                  </button>
                 </div>
                 <div class="facecam-pos-selectors" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
-                  <button type="button" class="btn-facecam-pos active" data-pos="ai_auto" title="AI tracks streamer face automatically">🤖 AI Auto</button>
+                  <button type="button" class="btn-facecam-pos active" data-pos="custom" title="Custom calibrated pointer dots crop">🎯 Custom</button>
                   <button type="button" class="btn-facecam-pos" data-pos="bottom_right" title="Streamer webcam is in bottom-right corner">↘ Btm R</button>
                   <button type="button" class="btn-facecam-pos" data-pos="bottom_left" title="Streamer webcam is in bottom-left corner">↙ Btm L</button>
                   <button type="button" class="btn-facecam-pos" data-pos="top_right" title="Streamer webcam is in top-right corner">↗ Top R</button>
